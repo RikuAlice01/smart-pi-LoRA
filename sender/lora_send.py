@@ -111,7 +111,7 @@ def main():
         encrypted_payload = encrypt_payload(payload)
 
         try:
-            lora.send(encrypted_payload.encode('utf-8'))
+            lora.write(encrypted_payload.encode('utf-8'))
             print(f"📤 Sent (encrypted): {encrypted_payload}")
             retry_unsent_data()
         except Exception as e:
