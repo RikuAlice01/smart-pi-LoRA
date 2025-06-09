@@ -49,7 +49,7 @@ def retry_unsent_data():
     for line in lines:
         try:
             encrypted = line.strip().encode('utf-8')
-            lora.send(encrypted)
+            lora.write(list(encrypted))  # ส่งเป็น list[int]
             print(f"📤 Retried: {line.strip()}")
             success_lines.append(line)
             time.sleep(0.5)
@@ -111,7 +111,8 @@ def main():
         encrypted_payload = encrypt_payload(payload)
 
         try:
-            lora.write(encrypted_payload.encode('utf-8'))
+            payload_bytes = encrypted_payload.encode('utf-8')
+            lora.write(list(payload_bytes))  # ส่งเป็น list[int]
             print(f"📤 Sent (encrypted): {encrypted_payload}")
             retry_unsent_data()
         except Exception as e:
