@@ -116,7 +116,7 @@ def main():
         # Set to receive mode - Use simpler approach
         try:
             # Try the old method first
-            lora.setLoRaPacket(True)
+            lora.setLoRaPacket(False, config.getint('lora', 'preamble_length'), 255)
             print("✅ Using basic LoRa packet mode")
         except TypeError:
             # If that fails, try with all parameters
