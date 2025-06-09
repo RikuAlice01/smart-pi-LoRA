@@ -50,18 +50,18 @@ def main():
         try:
             lora.begin(bus=0, cs=0)
             print("✅ Successfully connected with bus=0, cs=0")
-        except:
-            print("❌ Failed with bus=0, cs=0, trying bus=0, cs=1...")
+        except Exception as e:
+            print(f"❌ Failed with bus=0, cs=0: {e}")
             try:
                 lora.begin(bus=0, cs=1)
                 print("✅ Successfully connected with bus=0, cs=1")
-            except:
-                print("❌ Failed with bus=0, cs=1, trying bus=1, cs=0...")
+            except Exception as e:
+                print(f"❌ Failed with bus=0, cs=0 and bus=0, cs=1: {e}")
                 try:
                     lora.begin(bus=1, cs=0)
                     print("✅ Successfully connected with bus=1, cs=0")
-                except:
-                    print("❌ All SPI configurations failed. Check hardware connections.")
+                except Exception as e:
+                    print(f"❌ All SPI configurations failed. Check hardware connections: {e}")
                     return
         
         # Configure LoRa parameters
