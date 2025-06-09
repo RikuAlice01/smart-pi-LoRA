@@ -42,7 +42,7 @@ def decrypt_payload(encoded_text: str) -> str:
 def main():
     print("🚀 Starting LoRa Receiver")
     lora = SX126x()
-    lora.begin()
+    lora.begin(bus=0, cs=0)  # หรือ (bus=0, cs=1) แล้วแต่สายที่ต่อ
     lora.setFrequency(config.getfloat('lora', 'frequency'))
     lora.setSpreadingFactor(config.getint('lora', 'spreading_factor'))
     lora.setBandwidth(config.getint('lora', 'bandwidth'))
@@ -51,20 +51,17 @@ def main():
 
     while True:
         try:
-            data = lora.read()
-            if data:
+            if lora.available():
+                data = lora.read()
                 encrypted_str = data.decode('utf-8')
                 print(f"📥 Received encrypted: {encrypted_str}")
 
                 plaintext = decrypt_payload(encrypted_str)
                 print(f"🔓 Decrypted payload: {plaintext}")
-
             else:
                 print("⏳ Waiting for data...")
-
         except Exception as e:
             print(f"⚠️ Error during receive or decrypt: {e}")
-
         time.sleep(0.5)
 
 if __name__ == "__main__":
