@@ -51,7 +51,7 @@ def main():
 
     while True:
         try:
-            data = lora.receive(timeout=10)
+            data = lora.read()
             if data:
                 encrypted_str = data.decode('utf-8')
                 print(f"📥 Received encrypted: {encrypted_str}")
