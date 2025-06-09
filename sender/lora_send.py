@@ -3,9 +3,26 @@ import time
 import uuid
 import configparser
 import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+import base64
+import secrets
 
 config = configparser.ConfigParser()
 config.read('config.ini')
+
+KEYFILE = 'keyfile.bin'
+
+def load_key():
+    if not os.path.exists(KEYFILE):
+        raise FileNotFoundError(f"Key file '{KEYFILE}' not found.")
+    with open(KEYFILE, 'rb') as f:
+        key = f.read()
+        if len(key) != 32:
+            raise ValueError("Key length must be exactly 32 bytes (256 bits).")
+        return key
+
+AES_KEY = load_key()
 
 def get_device_id():
     mac = hex(uuid.getnode())[2:].upper().zfill(12)
@@ -30,7 +47,8 @@ def retry_unsent_data():
     success_lines = []
     for line in lines:
         try:
-            lora.send(line.strip().encode('utf-8'))
+            encrypted = line.strip().encode('utf-8')
+            lora.send(encrypted)
             print(f"📤 Retried: {line.strip()}")
             success_lines.append(line)
             time.sleep(0.5)
@@ -46,6 +64,28 @@ def retry_unsent_data():
             for line in lines:
                 if line not in success_lines:
                     f.write(line)
+
+def encrypt_payload(plain_text: str) -> str:
+    start_time = time.perf_counter()
+
+    backend = default_backend()
+    iv = secrets.token_bytes(16)  # สุ่ม IV 16 bytes
+    cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=backend)
+    encryptor = cipher.encryptor()
+
+    # PKCS#7 padding แบบง่าย
+    raw = plain_text.encode('utf-8')
+    pad_len = 16 - (len(raw) % 16)
+    padded_data = raw + bytes([pad_len] * pad_len)
+
+    encrypted = encryptor.update(padded_data) + encryptor.finalize()
+    encoded = base64.b64encode(iv + encrypted).decode('utf-8')
+
+    end_time = time.perf_counter()
+    elapsed = end_time - start_time
+    print(f"⏱️ Encryption time: {elapsed:.6f} seconds")
+
+    return encoded
 
 def main():
     print(f"🚀 Starting LoRa Node - Device ID: {device_id}")
@@ -65,14 +105,15 @@ def main():
     counter = 0
     while True:
         payload = f"id:{device_id},temp:{temp},hum:{hum},ph:{ph},count:{counter}"
+        encrypted_payload = encrypt_payload(payload)
 
         try:
-            lora.send(payload.encode('utf-8'))
-            print(f"📤 Sent: {payload}")
+            lora.send(encrypted_payload.encode('utf-8'))
+            print(f"📤 Sent (encrypted): {encrypted_payload}")
             retry_unsent_data()
         except Exception as e:
             print(f"❌ Send failed: {e}")
-            backup_payload(payload)
+            backup_payload(encrypted_payload)
 
         counter += 1
         time.sleep(interval)
