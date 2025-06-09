@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 import base64
 import secrets
+import datetime
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -104,7 +105,9 @@ def main():
 
     counter = 0
     while True:
-        payload = f"id:{device_id},temp:{temp},hum:{hum},ph:{ph},count:{counter}"
+        # เพิ่ม timestamp เป็น ISO 8601 UTC string
+        timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+        payload = f"id:{device_id},temp:{temp},hum:{hum},ph:{ph},count:{counter},timestamp:{timestamp}"
         encrypted_payload = encrypt_payload(payload)
 
         try:
