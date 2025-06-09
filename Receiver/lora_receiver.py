@@ -46,7 +46,7 @@ def main():
     lora.setFrequency(config.getfloat('lora', 'frequency'))
     lora.setSpreadingFactor(config.getint('lora', 'spreading_factor'))
     lora.setBandwidth(config.getint('lora', 'bandwidth'))
-    lora.setCodingRate(config.getint('lora', 'coding_rate'))
+    lora.setCodeRate(config.getint('lora', 'coding_rate'))
     lora.setPreambleLength(config.getint('lora', 'preamble_length'))
 
     while True:
