@@ -128,7 +128,7 @@ def main():
             )
             print("✅ Using advanced LoRa packet mode")
         
-        lora.setBlockingReceive(False)
+        # lora.setBlockingReceive(False)
         print("✅ LoRa module configured successfully")
         
         print("📡 Listening for messages...")
