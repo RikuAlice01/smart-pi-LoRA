@@ -1,0 +1,61 @@
+# ระบบ OS
+.DS_Store
+Thumbs.db
+
+# ไฟล์บิวด์ทั่วไป
+/dist/
+/build/
+/out/
+
+# ไฟล์ไบนารีและไลบรารี
+*.exe
+*.dll
+*.so
+*.dylib
+
+# ไฟล์ล็อก
+*.log
+
+# ไฟล์คอนฟิก IDE
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+
+# ไฟล์ Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+venv/
+.env.*
+
+# ไฟล์ Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+.pnpm-debug.log
+
+# ไฟล์ Java
+*.class
+*.jar
+*.war
+*.ear
+
+# ไฟล์ .NET
+bin/
+obj/
+
+# ไฟล์ JavaScript/TypeScript Build
+dist/
+build/
+
+# ไฟล์อื่น ๆ
+*.zip
+*.tar.gz
+*.rar
+
+# ถ้าเป็นโปรเจกต์ที่ใช้ Docker
+docker-compose.override.yml
