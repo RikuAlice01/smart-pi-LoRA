@@ -36,8 +36,34 @@ def decrypt_payload(encoded_text: str) -> str:
     plain = padded_plain[:-pad_len]
     return plain.decode('utf-8')
 
+def check_spi_devices():
+    """Check if SPI devices are available"""
+    spi_devices = ['/dev/spidev0.0', '/dev/spidev0.1', '/dev/spidev1.0', '/dev/spidev1.1']
+    available_devices = []
+    
+    for device in spi_devices:
+        if os.path.exists(device):
+            available_devices.append(device)
+    
+    return available_devices
+
 def main():
     print("🚀 Starting LoRa Receiver")
+    
+    # Check SPI devices first
+    print("🔍 Checking SPI devices...")
+    spi_devices = check_spi_devices()
+    
+    if not spi_devices:
+        print("❌ No SPI devices found!")
+        print("🔧 To fix this:")
+        print("   1. Run: sudo raspi-config")
+        print("   2. Go to Interface Options > SPI > Enable")
+        print("   3. Reboot your Pi")
+        print("   4. Or run: echo 'dtparam=spi=on' | sudo tee -a /boot/config.txt && sudo reboot")
+        return
+    else:
+        print(f"✅ Found SPI devices: {spi_devices}")
     
     # Initialize LoRa module
     lora = SX126x()
@@ -46,23 +72,38 @@ def main():
         # Try different SPI configurations
         print("🔧 Attempting to initialize LoRa module...")
         
-        # Try bus=0, cs=0 first
-        try:
-            lora.begin(bus=0, cs=0)
-            print("✅ Successfully connected with bus=0, cs=0")
-        except Exception as e:
-            print(f"❌ Failed with bus=0, cs=0: {e}")
-            try:
-                lora.begin(bus=0, cs=1)
-                print("✅ Successfully connected with bus=0, cs=1")
-            except Exception as e:
-                print(f"❌ Failed with bus=0, cs=0 and bus=0, cs=1: {e}")
+        configs_to_try = [
+            (0, 0, "/dev/spidev0.0"),
+            (0, 1, "/dev/spidev0.1"), 
+            (1, 0, "/dev/spidev1.0"),
+            (1, 1, "/dev/spidev1.1")
+        ]
+        
+        success = False
+        for bus, cs, device in configs_to_try:
+            if os.path.exists(device):
                 try:
-                    lora.begin(bus=1, cs=0)
-                    print("✅ Successfully connected with bus=1, cs=0")
+                    print(f"🔧 Trying bus={bus}, cs={cs} ({device})...")
+                    lora.begin(bus=bus, cs=cs)
+                    print(f"✅ Successfully connected with bus={bus}, cs={cs}")
+                    success = True
+                    break
                 except Exception as e:
-                    print(f"❌ All SPI configurations failed. Check hardware connections: {e}")
-                    return
+                    print(f"❌ Failed with bus={bus}, cs={cs}: {e}")
+        
+        if not success:
+            print("❌ All SPI configurations failed.")
+            print("🔧 Hardware troubleshooting:")
+            print("   1. Check LoRa module connections:")
+            print("      VCC  → 3.3V (Pin 1)")
+            print("      GND  → GND  (Pin 6)")
+            print("      SCK  → GPIO 11 (Pin 23)")  
+            print("      MISO → GPIO 9  (Pin 21)")
+            print("      MOSI → GPIO 10 (Pin 19)")
+            print("      CS   → GPIO 8  (Pin 24)")
+            print("   2. Verify 3.3V power supply (NOT 5V)")
+            print("   3. Check for loose connections")
+            return
         
         # Configure LoRa parameters
         print("🔧 Configuring LoRa parameters...")
@@ -72,8 +113,21 @@ def main():
         lora.setCodeRate(config.getint('lora', 'coding_rate'))
         lora.setPreambleLength(config.getint('lora', 'preamble_length'))
         
-        # Set to receive mode
-        lora.setLoRaPacket(True)
+        # Set to receive mode - Use simpler approach
+        try:
+            # Try the old method first
+            lora.setLoRaPacket(True)
+            print("✅ Using basic LoRa packet mode")
+        except TypeError:
+            # If that fails, try with all parameters
+            lora.setLoRaPacket(
+                implicitHeader=False,
+                preambleLength=config.getint('lora', 'preamble_length'),
+                payloadLength=255,
+                crcOn=True
+            )
+            print("✅ Using advanced LoRa packet mode")
+        
         lora.setBlockingReceive(False)
         print("✅ LoRa module configured successfully")
         
@@ -83,8 +137,9 @@ def main():
             try:
                 rx_len = lora.available()
                 if rx_len:
+                    print(f"📏 Received {rx_len} bytes")
                     data = bytearray()
-                    for i in range(rx_len):  # Fixed: was "for * in range(rx*len)"
+                    for i in range(rx_len):
                         data.append(lora.read())
                     
                     try:
@@ -96,23 +151,19 @@ def main():
                         print(f"📥 Received raw data (non-UTF8): {data.hex()}")
                     except Exception as decrypt_error:
                         print(f"🔓 Decryption failed: {decrypt_error}")
-                        print(f"📥 Raw encrypted data: {encrypted_str if 'encrypted_str' in locals() else 'N/A'}")
+                        print(f"📥 Raw encrypted data: {encrypted_str if 'encrypted_str' in locals() else data.hex()}")
                 else:
-                    print("⏳ Waiting for data...")
+                    print("⏳ Waiting for data...", end='\r')
                     
             except Exception as e:
                 print(f"⚠️ Error during receive: {e}")
                 
-            time.sleep(0.5)
+            time.sleep(1)
             
     except Exception as e:
         print(f"❌ Failed to initialize LoRa module: {e}")
-        print("🔧 Troubleshooting tips:")
-        print("   1. Check SPI connections (MOSI, MISO, SCK, CS)")
-        print("   2. Verify power supply (3.3V)")
-        print("   3. Check if SPI is enabled: sudo raspi-config")
-        print("   4. Try different CS pins")
-        print("   5. Verify module is properly seated")
+        import traceback
+        traceback.print_exc()
 
-if __name__ == "__main__":  # Fixed: was "if **name** == "__main__""
+if __name__ == "__main__":
     main()
