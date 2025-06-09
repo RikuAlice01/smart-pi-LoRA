@@ -1,83 +1,48 @@
-# smart-pi-LoRA - LoRa Data Sender
+# LoRa Encrypted Communication - Overview
 
-This project is a Python script for sending data via LoRa (Long Range) using the SX126x module. It is suitable for IoT applications and sensors that require long-range wireless data transmission.
+This project demonstrates secure wireless communication using LoRa SX126x modules combined with AES-256 encryption. It aims to provide a reliable and confidential data transfer method over long-range radio frequencies.
 
-## File Structure
+## Project Overview
 
-- `send/lora_send.py` - The main script for sending data via LoRa
-- `config.ini` - Configuration file containing settings such as frequency, transmission power, mock data, etc.
-- `unsent_data.log` - Backup file for storing unsent data to retry sending later
+- **Secure Transmission**  
+  Data is encrypted using AES-256 in CBC mode before being transmitted via LoRa. This ensures confidentiality and prevents eavesdropping.
 
----
+- **Key Management**  
+  The encryption key is securely loaded from an external binary file (`keyfile.bin`), keeping keys separate from the source code.
 
-## Key Features
+- **LoRa Configuration**  
+  All radio parameters (frequency, spreading factor, bandwidth, coding rate, etc.) are configurable through a `config.ini` file, allowing flexible adaptation to different environments and requirements.
 
-- Reads configuration values from `config.ini`
-- Generates a Device ID from the machine's MAC address with a configurable prefix
-- Sends mock sensor data including temperature (temp), humidity (hum), and pH (ph)
-- Backs up unsent data in `unsent_data.log`
-- Attempts to resend backed-up data automatically when the script runs
+- **Resilience**  
+  The transmitter implements a retry mechanism that stores unsent messages in a backup file and attempts to resend them later, increasing reliability.
 
----
+- **Decryption and Reception**  
+  The receiver listens for incoming encrypted payloads, decrypts them, and outputs the original plaintext data.
 
-## Installation and Usage
+- **Performance Monitoring**  
+  The encryption process is timed to provide insight into processing overhead.
 
-1. Install the required library (if any)
-```bash
-pip install LoRaRF
-````
+## Use Cases
 
-2. Edit the `config.ini` file to match your environment, for example:
+- Secure IoT sensor data transmission over long distances
+- Encrypted telemetry in remote or sensitive environments
+- Applications requiring lightweight and secure wireless communication
 
-```ini
-[device]
-id_prefix = node_
+## Components
 
-[lora]
-tx_power = 14
-frequency = 868.0
-spreading_factor = 7
-bandwidth = 125
-coding_rate = 5
-preamble_length = 8
+- **Transmitter Script**  
+  Prepares sensor data, encrypts it, and sends it via LoRa.
 
-[send]
-mock_temp = 25.0
-mock_hum = 50.0
-mock_ph = 7.0
-interval = 10
-```
+- **Receiver Script**  
+  Receives encrypted data, decrypts, and processes it.
 
-3. Run the script
+## Requirements
 
-```bash
-python send/lora_send.py
-```
+- Python 3.7+
+- `cryptography` library for AES encryption
+- `LoRaRF` library for SX126x hardware interface
+- LoRa SX126x radio modules connected to the system
 
 ---
 
-## Example Operation
-
-* When running the script, it starts sending payloads in the format:
-
-  ```
-  id:node_123456,temp:25.0,hum:50.0,ph:7.0,count:0
-  ```
-
-* If sending fails, the data will be saved to the backup file and retried in subsequent attempts.
-
----
-
-## Cautions
-
-* Ensure the LoRa SX126x hardware is connected to your machine before running
-* Set frequency and other parameters correctly according to your hardware and country regulations
-* The `LoRaRF` library is required to control the SX126x module
-
----
-
-## Summary
-
-This script makes it easy to send data over LoRa with backup and automatic retry features, suitable for IoT projects that require reliable data transmission in real-world conditions.
-
----
+This project serves as a foundation for building secure, encrypted LoRa networks suitable for various IoT applications.
