@@ -51,8 +51,12 @@ def main():
 
     while True:
         try:
-            if lora.available():
-                data = lora.read()
+            rx_len = lora.available()
+            if rx_len:
+                data = bytearray()
+                for _ in range(rx_len):
+                    data.append(lora.read())
+
                 encrypted_str = data.decode('utf-8')
                 print(f"📥 Received encrypted: {encrypted_str}")
 
