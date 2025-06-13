@@ -33,6 +33,5 @@ class SX126x:
         return ""
 
 def list_serial_ports():
-    """Return list of available USB serial ports (macOS/Linux)."""
     ports = serial.tools.list_ports.comports()
-    return [port.device for port in ports if "usb" in port.device.lower()]
+    return [port.device for port in ports if "usb" in port.device.lower() or "ttyUSB" in port.device.lower()]
