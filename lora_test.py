@@ -96,8 +96,9 @@ def test_simple_receive():
     methods = [method for method in dir(lora) if not method.startswith('_')]
     receive_methods = [m for m in methods if 'read' in m.lower() or 'recv' in m.lower() or 'available' in m.lower()]
     print(f"📋 Available receive methods: {receive_methods}")
-    
-    for i in range(30):  # ฟัง 30 วินาที
+
+    i = 0;
+    while True:
         try:
             # วิธีที่ 1: ใช้ available() และ read()
             try:
@@ -139,7 +140,7 @@ def test_simple_receive():
                         decode_received_data(data)
                         
                 else:
-                    print(f"⏳ Waiting... ({i+1}/30) - No data available")
+                    print(f"⏳ Waiting... ({i+1}) - No data available")
                     
             except Exception as e:
                 print(f"⚠️ Main receive error: {e}")
@@ -209,45 +210,6 @@ def decode_received_data(data):
         print(f"⚠️ Decode error: {e}")
         print(f"📊 Raw received data: {data}")
 
-def test_ping_pong():
-    """ทดสอบส่งและรับแบบ ping-pong"""
-    
-    lora = test_lora_connection()
-    if lora is None:
-        return
-    
-    print("🏓 Starting ping-pong test...")
-    print("This will send a message every 5 seconds and listen in between")
-    
-    counter = 0
-    
-    for i in range(12):  # รัน 1 นาที (12 x 5 วินาที)
-        # ส่งข้อความ
-        counter += 1
-        message = f"PING-{counter:03d}"
-        
-        try:
-            message_bytes = list(message.encode('utf-8'))
-            result = lora.write(message_bytes, len(message_bytes))
-            print(f"📤 Sent: {message} (result: {result})")
-        except Exception as e:
-            print(f"❌ Send error: {e}")
-        
-        # ฟังข้อความตอบกลับ 5 วินาที
-        print("📡 Listening for response...")
-        
-        for j in range(5):
-            try:
-                available_bytes = lora.available()
-                if available_bytes and available_bytes> 0:
-                    data = lora.read()
-                    decode_received_data(data)
-                    
-            except Exception as e:
-                print(f"⚠️ Listen error: {e}")
-                
-            time.sleep(1)
-
 if __name__ == "__main__":
     import sys
     
@@ -256,14 +218,11 @@ if __name__ == "__main__":
         print("  python lora_test.py test     - Test connection")
         print("  python lora_test.py send     - Test sending")  
         print("  python lora_test.py receive  - Test receiving")
-        print("  python lora_test.py pingpong - Test ping-pong communication")
     elif sys.argv[1] == "test":
         test_lora_connection()
     elif sys.argv[1] == "send":
         test_simple_send()
     elif sys.argv[1] == "receive":
         test_simple_receive()
-    elif sys.argv[1] == "pingpong":
-        test_ping_pong()
     else:
         print("Invalid command")
