@@ -60,6 +60,14 @@ class SX126xGUI:
         # เพิ่ม Debug button
         self.debug_btn = tk.Button(self.right_frame, text="🐛 Debug Info", command=self.show_debug)
         self.debug_btn.pack(pady=2, fill=tk.X)
+        
+        # เพิ่มปุ่มทดสอบ
+        self.test_btn = tk.Button(self.right_frame, text="🔍 Test LoRa", command=self.test_lora)
+        self.test_btn.pack(pady=2, fill=tk.X)
+        
+        # เพิ่มปุ่มส่งข้อมูลทดสอบ
+        self.test_send_btn = tk.Button(self.right_frame, text="📡 Send Test", command=self.send_test_data)
+        self.test_send_btn.pack(pady=2, fill=tk.X)
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -106,10 +114,21 @@ class SX126xGUI:
             
         if self.lora and self.running:
             try:
-                self.lora.send_data(text + '\n')
+                # Debug: แสดงข้อมูลที่ส่ง
+                send_text = text + '\n'
+                print(f"[DEBUG] Sending: {repr(send_text)}")
+                print(f"[DEBUG] Sending bytes: {send_text.encode('utf-8')}")
+                
+                # ลองส่งแบบต่างๆ
+                self.lora.send_data(send_text)
                 self.append_to_console(f"[Sent] {text}")
                 self.input_entry.delete(0, tk.END)
+                
+                # เพิ่มข้อมูล timing
+                self.append_to_console(f"[Debug] Sent at {time.strftime('%H:%M:%S')}")
+                
             except Exception as e:
+                print(f"[DEBUG] Send exception: {e}")
                 self.append_to_console(f"[Error] Send failed: {str(e)}")
         else:
             messagebox.showwarning("Warning", "Not connected to device")
@@ -132,20 +151,37 @@ class SX126xGUI:
                     # Reset counter เมื่อได้ข้อมูล
                     consecutive_empty_reads = 0
                     
-                    # แปลงข้อมูลให้เป็น string ถ้าจำเป็น
+                    # Debug: แสดงข้อมูล raw ทั้งหมด
+                    print(f"[DEBUG] Raw data type: {type(msg)}")
+                    print(f"[DEBUG] Raw data: {repr(msg)}")
+                    
+                    # กรองข้อมูลที่เป็น null bytes หรือ control characters
                     if isinstance(msg, bytes):
                         try:
-                            msg = msg.decode('utf-8', errors='ignore').strip()
-                        except:
-                            msg = str(msg)
+                            # ลบ null bytes และ control characters
+                            cleaned_msg = msg.replace(b'\x00', b'').strip()
+                            if cleaned_msg:
+                                decoded_msg = cleaned_msg.decode('utf-8', errors='ignore').strip()
+                                if decoded_msg:
+                                    print(f"[DEBUG] Cleaned message: {repr(decoded_msg)}")
+                                    self.root.after(0, lambda m=decoded_msg: self.append_to_console(f"[Received] {m}"))
+                                else:
+                                    print(f"[DEBUG] Empty after cleaning: {repr(cleaned_msg)}")
+                            else:
+                                print(f"[DEBUG] Only null bytes received")
+                        except Exception as decode_error:
+                            print(f"[DEBUG] Decode error: {decode_error}")
+                            # แสดงเป็น hex ถ้า decode ไม่ได้
+                            hex_data = msg.hex() if hasattr(msg, 'hex') else str(msg)
+                            self.root.after(0, lambda h=hex_data: self.append_to_console(f"[Received HEX] {h}"))
                     else:
-                        msg = str(msg).strip()
-                    
-                    # แสดงข้อมูลถ้าไม่ใช่ string ว่าง
-                    if msg:
-                        print(f"[DEBUG] Raw received: {repr(msg)}")  # Debug รูปแบบ raw
-                        # ใช้ thread-safe method ในการอัปเดต GUI
-                        self.root.after(0, lambda m=msg: self.append_to_console(f"[Received] {m}"))
+                        # ถ้าไม่ใช่ bytes
+                        msg_str = str(msg).strip()
+                        if msg_str and msg_str != '\x00':
+                            print(f"[DEBUG] String message: {repr(msg_str)}")
+                            self.root.after(0, lambda m=msg_str: self.append_to_console(f"[Received] {m}"))
+                        else:
+                            print(f"[DEBUG] Null or empty string: {repr(msg_str)}")
                 else:
                     consecutive_empty_reads += 1
                     if consecutive_empty_reads > max_empty_reads:
@@ -169,6 +205,60 @@ class SX126xGUI:
             self.text_area.yview(tk.END)
         except Exception as e:
             print(f"[DEBUG] Error updating console: {e}")
+
+    def test_lora(self):
+        """ทดสอบการทำงานของ LoRa module"""
+        if not self.lora:
+            messagebox.showwarning("Warning", "Not connected to device")
+            return
+            
+        try:
+            # ลองเรียกใช้ method ต่างๆ ของ LoRa
+            test_results = []
+            test_results.append("=== LoRa Test Results ===")
+            
+            # ตรวจสอบการเชื่อมต่อ
+            if hasattr(self.lora, 'is_connected'):
+                test_results.append(f"Connected: {self.lora.is_connected()}")
+            
+            # ตรวจสอบการตั้งค่า
+            if hasattr(self.lora, 'get_config'):
+                config = self.lora.get_config()
+                test_results.append(f"Config: {config}")
+            
+            # ส่งข้อมูลทดสอบ
+            test_msg = "TEST_" + str(int(time.time()))
+            test_results.append(f"Sending test message: {test_msg}")
+            self.lora.send_data(test_msg)
+            
+            result_text = "\n".join(test_results)
+            self.append_to_console(f"[Test] {result_text}")
+            
+        except Exception as e:
+            self.append_to_console(f"[Test Error] {str(e)}")
+    
+    def send_test_data(self):
+        """ส่งข้อมูลทดสอบหลายรูปแบบ"""
+        if not self.lora or not self.running:
+            messagebox.showwarning("Warning", "Not connected to device")
+            return
+        
+        test_messages = [
+            "HELLO",
+            "123",
+            "TEST",
+            "ABCD",
+            "Hello World!"
+        ]
+        
+        for i, msg in enumerate(test_messages):
+            try:
+                print(f"[DEBUG] Test {i+1}: Sending '{msg}'")
+                self.lora.send_data(msg)
+                self.append_to_console(f"[Test {i+1}] Sent: {msg}")
+                time.sleep(1)  # รอระหว่างการส่ง
+            except Exception as e:
+                self.append_to_console(f"[Test {i+1} Error] {str(e)}")
 
     def show_debug(self):
         """แสดงข้อมูล debug"""
