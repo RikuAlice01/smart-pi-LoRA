@@ -64,7 +64,7 @@ def check_spi_connection():
     """Check if LoRa module responds"""
     try:
         # Try to read a register to verify communication
-        version = lora.getModemStatus()
+        freq = lora.getFrequency()
         print(f"✅ LoRa module responding, status: {version}")
         return True
     except Exception as e:
