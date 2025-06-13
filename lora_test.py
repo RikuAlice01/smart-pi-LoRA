@@ -13,12 +13,19 @@ def test_lora_connection():
         lora.begin()
         print("✅ LoRa.begin() successful")
         
-        # ทดสอบการอ่านสถานะ
+        # ทดสอบการอ่านสถานะ (ข้ามไปถ้าไม่มี method นี้)
         try:
-            status = lora.getModemStatus()
-            print(f"✅ Modem Status: {status}")
+            # ลองใช้ method อื่นที่อาจมี
+            if hasattr(lora, 'getStatus'):
+                status = lora.getStatus()
+                print(f"✅ Status: {status}")
+            elif hasattr(lora, 'status'):
+                status = lora.status()
+                print(f"✅ Status: {status}")
+            else:
+                print("⚠️ No status method available")
         except Exception as e:
-            print(f"⚠️ Cannot read modem status: {e}")
+            print(f"⚠️ Cannot read status: {e}")
         
         # กำหนดค่าพื้นฐาน
         lora.setFrequency(865.0)
@@ -26,23 +33,18 @@ def test_lora_connection():
         lora.setBandwidth(125000)
         print("✅ Basic configuration set")
         
-        return True
+        return lora  # คืนค่า lora object เพื่อใช้ต่อ
         
     except Exception as e:
         print(f"❌ Connection failed: {e}")
-        return False
+        return None
 
 def test_simple_send():
     """ทดสอบส่งข้อความง่ายๆ"""
     
-    if not test_lora_connection():
+    lora = test_lora_connection()
+    if lora is None:
         return
-    
-    lora = SX126x()
-    lora.begin()
-    lora.setFrequency(865.0)
-    lora.setSpreadingFactor(7)
-    lora.setBandwidth(125000)
     
     message = "TEST123"
     print(f"📤 Sending: {message}")
@@ -53,94 +55,166 @@ def test_simple_send():
         print(f"📊 Encoded bytes: {message_bytes}")
         
         # ส่งข้อมูล
-        lora.write(message_bytes, len(message_bytes))
-        print("✅ Send successful")
+        result = lora.write(message_bytes, len(message_bytes))
+        print(f"✅ Send successful, result: {result}")
         
         # รอให้การส่งเสร็จสิ้น
         time.sleep(0.1)
         
     except Exception as e:
         print(f"❌ Send failed: {e}")
+        # ลองวิธีอื่น
+        try:
+            print("🔄 Trying alternative send method...")
+            # ลองส่งเป็น string
+            result2 = lora.write(message)
+            print(f"✅ Alternative send successful: {result2}")
+        except Exception as e2:
+            print(f"❌ Alternative send also failed: {e2}")
+            
+            # ลองส่งทีละ byte
+            try:
+                print("🔄 Trying byte-by-byte send...")
+                for i, byte_val in enumerate(message_bytes):
+                    lora.write([byte_val], 1)
+                    time.sleep(0.01)
+                print("✅ Byte-by-byte send completed")
+            except Exception as e3:
+                print(f"❌ Byte-by-byte send failed: {e3}")
 
 def test_simple_receive():
     """ทดสอบรับข้อความง่ายๆ"""
     
-    if not test_lora_connection():
+    lora = test_lora_connection()
+    if lora is None:
         return
     
-    lora = SX126x()
-    lora.begin()
-    lora.setFrequency(865.0)
-    lora.setSpreadingFactor(7)
-    lora.setBandwidth(125000)
-    
     print("📡 Listening for simple messages...")
+    print("📋 Method info:")
+    
+    # ตรวจสอบ methods ที่มี
+    methods = [method for method in dir(lora) if not method.startswith('_')]
+    receive_methods = [m for m in methods if 'read' in m.lower() or 'recv' in m.lower() or 'available' in m.lower()]
+    print(f"📋 Available receive methods: {receive_methods}")
     
     for i in range(30):  # ฟัง 30 วินาที
         try:
-            # ตรวจสอบว่ามีข้อมูลรับหรือไม่
-            received_length = lora.available()
-            
-            if received_length > 0:
-                print(f"📨 Data available: {received_length} bytes")
+            # วิธีที่ 1: ใช้ available() และ read()
+            try:
+                available_bytes = lora.available()
                 
-                # อ่านข้อมูล
-                data = lora.read()
-                print(f"📥 Raw received: {data} (type: {type(data)})")
-                
-                # ตรวจสอบประเภทของข้อมูลที่รับมา
-                if isinstance(data, (list, tuple)):
-                    # ถ้าเป็น list หรือ tuple ของ integers
+                if available_bytes and available_bytes > 0:
+                    print(f"📨 Data available: {available_bytes} bytes")
+                    
+                    # ลองอ่านข้อมูลด้วยวิธีต่างๆ
+                    data = None
+                    
+                    # วิธีที่ 1: read() ธรรมดา
                     try:
-                        # แปลงเป็น bytes แล้วเป็น string
-                        byte_data = bytes(data)
-                        message = byte_data.decode('utf-8')
-                        print(f"🔤 Decoded message: {message}")
-                    except Exception as decode_error:
-                        print(f"⚠️ Decode error: {decode_error}")
-                        print(f"📊 Raw bytes: {[hex(b) for b in data]}")
-                        
-                elif isinstance(data, int):
-                    # ถ้าเป็น integer เดี่ยว
+                        data = lora.read()
+                        print(f"📥 read(): {data} (type: {type(data)})")
+                    except Exception as e:
+                        print(f"⚠️ read() error: {e}")
+                    
+                    # วิธีที่ 2: ลอง read(length)
                     try:
-                        if data != 0:  # ไม่ใช่ค่าว่าง
-                            message = chr(data)
-                            print(f"🔤 Single char: {message}")
-                        else:
-                            print("📭 Empty data (0)")
-                    except:
-                        print(f"📊 Raw int: {data}")
-                        
-                elif isinstance(data, bytes):
-                    # ถ้าเป็น bytes
+                        if available_bytes > 1:
+                            data2 = lora.read(available_bytes)
+                            print(f"📥 read(length): {data2} (type: {type(data2)})")
+                            data = data2
+                    except Exception as e:
+                        print(f"⚠️ read(length) error: {e}")
+                    
+                    # วิธีที่ 3: ลองใช้ readBytes ถ้ามี
                     try:
-                        message = data.decode('utf-8')
-                        print(f"🔤 Decoded message: {message}")
-                    except:
-                        print(f"📊 Raw bytes: {data.hex()}")
+                        if hasattr(lora, 'readBytes'):
+                            data3 = lora.readBytes(available_bytes)
+                            print(f"📥 readBytes(): {data3} (type: {type(data3)})")
+                            data = data3
+                    except Exception as e:
+                        print(f"⚠️ readBytes() error: {e}")
+                    
+                    # ประมวลผลข้อมูลที่อ่านได้
+                    if data is not None:
+                        decode_received_data(data)
                         
                 else:
-                    print(f"❓ Unknown data type: {type(data)}")
+                    print(f"⏳ Waiting... ({i+1}/30) - No data available")
                     
-            else:
-                print(f"⏳ Waiting... ({i+1}/30)")
+            except Exception as e:
+                print(f"⚠️ Main receive error: {e}")
+            
+            # วิธีที่ 4: ลองใช้ receive mode ถ้ามี
+            try:
+                if hasattr(lora, 'receive') and i == 0:  # ทำครั้งเดียว
+                    lora.receive()
+                    print("📡 Set to receive mode")
+            except Exception as e:
+                print(f"⚠️ Receive mode error: {e}")
                 
         except Exception as e:
-            print(f"⚠️ Receive error: {e}")
+            print(f"⚠️ Loop error: {e}")
             
         time.sleep(1)
+
+def decode_received_data(data):
+    """แยกฟังก์ชันสำหรับถอดรหัสข้อมูลที่รับมา"""
+    
+    try:
+        if isinstance(data, (list, tuple)):
+            if len(data) > 0:
+                # แปลงเป็น bytes แล้วเป็น string
+                try:
+                    byte_data = bytes(data)
+                    message = byte_data.decode('utf-8')
+                    print(f"🔤 Decoded message: '{message}'")
+                except Exception as decode_error:
+                    print(f"⚠️ UTF-8 decode error: {decode_error}")
+                    # ลองแสดงเป็น hex
+                    hex_data = [f"0x{b:02x}" for b in data if isinstance(b, int)]
+                    print(f"📊 Hex data: {hex_data}")
+            else:
+                print("📭 Empty list/tuple")
+                
+        elif isinstance(data, int):
+            if data != 0:
+                try:
+                    if 32 <= data <= 126:  # printable ASCII
+                        char = chr(data)
+                        print(f"🔤 Single char: '{char}' (ASCII {data})")
+                    else:
+                        print(f"📊 Single byte: {data} (0x{data:02x})")
+                except:
+                    print(f"📊 Raw int: {data}")
+            else:
+                print("📭 Empty data (0)")
+                
+        elif isinstance(data, bytes):
+            if len(data) > 0:
+                try:
+                    message = data.decode('utf-8')
+                    print(f"🔤 Decoded message: '{message}'")
+                except:
+                    print(f"📊 Raw bytes (hex): {data.hex()}")
+            else:
+                print("📭 Empty bytes")
+                
+        elif isinstance(data, str):
+            print(f"🔤 String message: '{data}'")
+            
+        else:
+            print(f"❓ Unknown data type: {type(data)}, value: {data}")
+            
+    except Exception as e:
+        print(f"⚠️ Decode error: {e}")
+        print(f"📊 Raw received data: {data}")
 
 def test_ping_pong():
     """ทดสอบส่งและรับแบบ ping-pong"""
     
-    if not test_lora_connection():
+    lora = test_lora_connection()
+    if lora is None:
         return
-    
-    lora = SX126x()
-    lora.begin()
-    lora.setFrequency(865.0)
-    lora.setSpreadingFactor(7)
-    lora.setBandwidth(125000)
     
     print("🏓 Starting ping-pong test...")
     print("This will send a message every 5 seconds and listen in between")
@@ -154,8 +228,8 @@ def test_ping_pong():
         
         try:
             message_bytes = list(message.encode('utf-8'))
-            lora.write(message_bytes, len(message_bytes))
-            print(f"📤 Sent: {message}")
+            result = lora.write(message_bytes, len(message_bytes))
+            print(f"📤 Sent: {message} (result: {result})")
         except Exception as e:
             print(f"❌ Send error: {e}")
         
@@ -164,17 +238,10 @@ def test_ping_pong():
         
         for j in range(5):
             try:
-                if lora.available() > 0:
+                available_bytes = lora.available()
+                if available_bytes and available_bytes> 0:
                     data = lora.read()
-                    
-                    if isinstance(data, (list, tuple)):
-                        try:
-                            message_received = bytes(data).decode('utf-8')
-                            print(f"📥 Received: {message_received}")
-                        except:
-                            print(f"📊 Raw response: {data}")
-                    elif isinstance(data, int) and data != 0:
-                        print(f"📥 Received single byte: {data} ({chr(data) if 32 <= data <= 126 else 'non-printable'})")
+                    decode_received_data(data)
                     
             except Exception as e:
                 print(f"⚠️ Listen error: {e}")
