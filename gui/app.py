@@ -151,13 +151,12 @@ class SX126xGUI:
                     # Reset counter เมื่อได้ข้อมูล
                     consecutive_empty_reads = 0
                     
-                    # Debug: แสดงข้อมูล raw ทั้งหมด
-                    print(f"[DEBUG] Raw data type: {type(msg)}")
-                    print(f"[DEBUG] Raw data: {repr(msg)}")
-                    
                     # กรองข้อมูลที่เป็น null bytes หรือ control characters
                     if isinstance(msg, bytes):
                         try:
+                            # Debug: แสดงข้อมูล raw ทั้งหมด
+                            print(f"[DEBUG] Raw data type: {type(msg)}")
+                            print(f"[DEBUG] Raw data: {repr(msg)}")
                             # ลบ null bytes และ control characters
                             cleaned_msg = msg.replace(b'\x00', b'').strip()
                             if cleaned_msg:
@@ -180,8 +179,6 @@ class SX126xGUI:
                         if msg_str and msg_str != '\x00':
                             print(f"[DEBUG] String message: {repr(msg_str)}")
                             self.root.after(0, lambda m=msg_str: self.append_to_console(f"[Received] {m}"))
-                        else:
-                            print(f"[DEBUG] Null or empty string: {repr(msg_str)}")
                 else:
                     consecutive_empty_reads += 1
                     if consecutive_empty_reads > max_empty_reads:
