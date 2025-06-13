@@ -38,43 +38,15 @@ def backup_payload(payload):
     with open(BACKUP_FILE, "a") as f:
         f.write(payload + "\n")
 
-def retry_unsent_data():
-    if not os.path.exists(BACKUP_FILE):
-        return
-
-    with open(BACKUP_FILE, "r") as f:
-        lines = f.readlines()
-
-    success_lines = []
-    for line in lines:
-        try:
-            encrypted = line.strip().encode('utf-8')
-            lora.write(list(encrypted))  # ส่งเป็น list[int]
-            print(f"📤 Retried: {line.strip()}")
-            success_lines.append(line)
-            time.sleep(0.5)
-        except Exception as e:
-            print(f"⚠️ Retry failed: {e}")
-            break
-
-    if len(success_lines) == len(lines):
-        os.remove(BACKUP_FILE)
-        print("🧹 All retries sent successfully. Backup log removed.")
-    else:
-        with open(BACKUP_FILE, "w") as f:
-            for line in lines:
-                if line not in success_lines:
-                    f.write(line)
-
 def encrypt_payload(plain_text: str) -> str:
     start_time = time.perf_counter()
 
     backend = default_backend()
-    iv = secrets.token_bytes(16)  # สุ่ม IV 16 bytes
+    iv = secrets.token_bytes(16)
     cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=backend)
     encryptor = cipher.encryptor()
 
-    # PKCS#7 padding แบบง่าย
+    # PKCS#7 padding
     raw = plain_text.encode('utf-8')
     pad_len = 16 - (len(raw) % 16)
     padded_data = raw + bytes([pad_len] * pad_len)
@@ -88,15 +60,61 @@ def encrypt_payload(plain_text: str) -> str:
 
     return encoded
 
+def check_spi_connection():
+    """Check if LoRa module responds"""
+    try:
+        # Try to read a register to verify communication
+        version = lora.getModemStatus()
+        print(f"✅ LoRa module responding, status: {version}")
+        return True
+    except Exception as e:
+        print(f"❌ LoRa module not responding: {e}")
+        return False
+
 def main():
     print(f"🚀 Starting LoRa Node - Device ID: {device_id}")
-    lora.begin()
-    lora.setTxPower(config.getint('lora', 'tx_power'))
-    lora.setFrequency(config.getfloat('lora', 'frequency'))
-    lora.setSpreadingFactor(config.getint('lora', 'spreading_factor'))
-    lora.setBandwidth(config.getint('lora', 'bandwidth'))
-    lora.setCodeRate(config.getint('lora', 'coding_rate'))
-    lora.setPreambleLength(config.getint('lora', 'preamble_length'))
+    
+    # Initialize with error handling
+    try:
+        lora.begin()
+        print("✅ LoRa module initialized")
+        
+        # Check connection
+        if not check_spi_connection():
+            print("❌ Cannot communicate with LoRa module")
+            return
+            
+    except Exception as e:
+        print(f"❌ Failed to initialize LoRa: {e}")
+        return
+    
+    # Configure LoRa parameters
+    try:
+        lora.setTxPower(config.getint('lora', 'tx_power'))
+        lora.setFrequency(config.getfloat('lora', 'frequency'))
+        lora.setSpreadingFactor(config.getint('lora', 'spreading_factor'))
+        lora.setBandwidth(config.getint('lora', 'bandwidth'))
+        lora.setCodeRate(config.getint('lora', 'coding_rate'))
+        lora.setPreambleLength(config.getint('lora', 'preamble_length'))
+        
+        # ✅ เพิ่มการกำหนด LoRa packet mode ให้ตรงกับ receiver
+        try:
+            lora.setLoRaPacket(False, config.getint('lora', 'preamble_length'), 255)
+            print("✅ Using basic LoRa packet mode")
+        except TypeError:
+            lora.setLoRaPacket(
+                implicitHeader=False,
+                preambleLength=config.getint('lora', 'preamble_length'),
+                payloadLength=255,
+                crcOn=True
+            )
+            print("✅ Using advanced LoRa packet mode")
+            
+        print("✅ LoRa parameters configured")
+        
+    except Exception as e:
+        print(f"❌ Failed to configure LoRa: {e}")
+        return
 
     temp = config.getfloat('send', 'mock_temp')
     hum = config.getfloat('send', 'mock_hum')
@@ -104,20 +122,43 @@ def main():
     interval = config.getint('send', 'interval')
 
     counter = 0
+    consecutive_failures = 0
+    
     while True:
-        # เพิ่ม timestamp เป็น ISO 8601 UTC string
-        timestamp = datetime.datetime.utcnow().isoformat() + "Z"
-        payload = f"id:{device_id},temp:{temp},hum:{hum},ph:{ph},count:{counter},timestamp:{timestamp}"
-        encrypted_payload = encrypt_payload(payload)
-
         try:
+            timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+            payload = f"id:{device_id},temp:{temp},hum:{hum},ph:{ph},count:{counter},timestamp:{timestamp}"
+            
+            print(f"📝 Original payload: {payload}")
+            encrypted_payload = encrypt_payload(payload)
+            print(f"🔐 Encrypted payload: {encrypted_payload}")
+            
+            # ✅ ปรับปรุงวิธีการส่งข้อมูล
             payload_bytes = encrypted_payload.encode('utf-8')
-            lora.write(list(payload_bytes))  # ส่งเป็น list[int]
-            print(f"📤 Sent (encrypted): {encrypted_payload}")
-            retry_unsent_data()
+            print(f"📏 Payload length: {len(payload_bytes)} bytes")
+            
+            # ตรวจสอบขนาดข้อมูล
+            if len(payload_bytes) > 255:
+                print(f"⚠️ Payload too large: {len(payload_bytes)} bytes (max 255)")
+                # ลดขนาดข้อมูลหรือแบ่งส่ง
+                continue
+            
+            # ส่งข้อมูล
+            lora.write(payload_bytes, len(payload_bytes))
+            print(f"📤 Sent successfully: {len(payload_bytes)} bytes")
+            
+            consecutive_failures = 0
+            
         except Exception as e:
-            print(f"❌ Send failed: {e}")
+            consecutive_failures += 1
+            print(f"❌ Send failed (attempt {consecutive_failures}): {e}")
             backup_payload(encrypted_payload)
+            
+            # หยุดชั่วคราวถ้าเกิดข้อผิดพลาดติดต่อกัน
+            if consecutive_failures >= 3:
+                print("⚠️ Too many consecutive failures, waiting longer...")
+                time.sleep(30)
+                consecutive_failures = 0
 
         counter += 1
         time.sleep(interval)

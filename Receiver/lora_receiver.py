@@ -23,18 +23,21 @@ def load_key():
 AES_KEY = load_key()
 
 def decrypt_payload(encoded_text: str) -> str:
-    backend = default_backend()
-    raw = base64.b64decode(encoded_text)
-    iv = raw[:16]
-    encrypted_data = raw[16:]
-    cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=backend)
-    decryptor = cipher.decryptor()
-    padded_plain = decryptor.update(encrypted_data) + decryptor.finalize()
-    pad_len = padded_plain[-1]
-    if pad_len < 1 or pad_len > 16:
-        raise ValueError("Invalid padding length.")
-    plain = padded_plain[:-pad_len]
-    return plain.decode('utf-8')
+    try:
+        backend = default_backend()
+        raw = base64.b64decode(encoded_text)
+        iv = raw[:16]
+        encrypted_data = raw[16:]
+        cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=backend)
+        decryptor = cipher.decryptor()
+        padded_plain = decryptor.update(encrypted_data) + decryptor.finalize()
+        pad_len = padded_plain[-1]
+        if pad_len < 1 or pad_len > 16:
+            raise ValueError("Invalid padding length.")
+        plain = padded_plain[:-pad_len]
+        return plain.decode('utf-8')
+    except Exception as e:
+        raise Exception(f"Decryption failed: {e}")
 
 def check_spi_devices():
     """Check if SPI devices are available"""
@@ -46,6 +49,16 @@ def check_spi_devices():
             available_devices.append(device)
     
     return available_devices
+
+def test_lora_communication(lora):
+    """Test if LoRa module is responding"""
+    try:
+        status = lora.getModemStatus()
+        print(f"✅ LoRa module status: {status}")
+        return True
+    except Exception as e:
+        print(f"❌ LoRa communication test failed: {e}")
+        return False
 
 def main():
     print("🚀 Starting LoRa Receiver")
@@ -60,7 +73,6 @@ def main():
         print("   1. Run: sudo raspi-config")
         print("   2. Go to Interface Options > SPI > Enable")
         print("   3. Reboot your Pi")
-        print("   4. Or run: echo 'dtparam=spi=on' | sudo tee -a /boot/config.txt && sudo reboot")
         return
     else:
         print(f"✅ Found SPI devices: {spi_devices}")
@@ -85,22 +97,22 @@ def main():
                 try:
                     print(f"🔧 Trying bus={bus}, cs={cs} ({device})...")
                     lora.begin(bus=bus, cs=cs)
-                    print(f"✅ Successfully connected with bus={bus}, cs={cs}")
-                    success = True
-                    break
+                    
+                    # Test communication
+                    if test_lora_communication(lora):
+                        print(f"✅ Successfully connected with bus={bus}, cs={cs}")
+                        success = True
+                        break
+                    else:
+                        print(f"❌ Communication test failed for bus={bus}, cs={cs}")
+                        
                 except Exception as e:
                     print(f"❌ Failed with bus={bus}, cs={cs}: {e}")
         
         if not success:
             print("❌ All SPI configurations failed.")
             print("🔧 Hardware troubleshooting:")
-            print("   1. Check LoRa module connections:")
-            print("      VCC  → 3.3V (Pin 1)")
-            print("      GND  → GND  (Pin 6)")
-            print("      SCK  → GPIO 11 (Pin 23)")  
-            print("      MISO → GPIO 9  (Pin 21)")
-            print("      MOSI → GPIO 10 (Pin 19)")
-            print("      CS   → GPIO 8  (Pin 24)")
+            print("   1. Check LoRa module connections")
             print("   2. Verify 3.3V power supply (NOT 5V)")
             print("   3. Check for loose connections")
             return
@@ -113,13 +125,11 @@ def main():
         lora.setCodeRate(config.getint('lora', 'coding_rate'))
         lora.setPreambleLength(config.getint('lora', 'preamble_length'))
         
-        # Set to receive mode - Use simpler approach
+        # Set LoRa packet mode
         try:
-            # Try the old method first
             lora.setLoRaPacket(False, config.getint('lora', 'preamble_length'), 255)
             print("✅ Using basic LoRa packet mode")
         except TypeError:
-            # If that fails, try with all parameters
             lora.setLoRaPacket(
                 implicitHeader=False,
                 preambleLength=config.getint('lora', 'preamble_length'),
@@ -128,38 +138,74 @@ def main():
             )
             print("✅ Using advanced LoRa packet mode")
         
-        # lora.setBlockingReceive(False)
         print("✅ LoRa module configured successfully")
         
+        # ✅ เพิ่มการตรวจสอบ RSSI และ SNR
         print("📡 Listening for messages...")
+        receive_count = 0
+        last_activity = time.time()
         
         while True:
             try:
-                rx_len = lora.available()
-                if rx_len:
-                    print(f"📏 Received {rx_len} bytes")
-                    data = bytearray()
-                    for i in range(rx_len):
-                        data.append(lora.read())
+                # ✅ ปรับปรุงการรับข้อมูล
+                if lora.available():
+                    receive_count += 1
+                    current_time = time.time()
+                    
+                    # อ่านข้อมูลทั้งหมด
+                    data = lora.read()
+                    
+                    # ตรวจสอบ RSSI และ SNR
+                    rssi = lora.getRSSI()
+                    snr = lora.getSNR()
+                    
+                    print(f"\n📡 === Message #{receive_count} ===")
+                    print(f"📏 Received {len(data)} bytes")
+                    print(f"📊 RSSI: {rssi} dBm, SNR: {snr} dB")
                     
                     try:
-                        encrypted_str = data.decode('utf-8')
-                        print(f"📥 Received encrypted: {encrypted_str}")
+                        # ลองแปลงเป็น string
+                        if isinstance(data, (bytes, bytearray)):
+                            encrypted_str = data.decode('utf-8')
+                        else:
+                            encrypted_str = ''.join(chr(b) for b in data)
+                            
+                        print(f"📥 Encrypted data: {encrypted_str[:100]}...")
+                        
+                        # ถอดรหัส
                         plaintext = decrypt_payload(encrypted_str)
-                        print(f"🔓 Decrypted payload: {plaintext}")
+                        print(f"🔓 Decrypted: {plaintext}")
+                        
+                        last_activity = current_time
+                        
                     except UnicodeDecodeError:
-                        print(f"📥 Received raw data (non-UTF8): {data.hex()}")
+                        print(f"📥 Raw data (non-UTF8): {data[:50].hex()}...")
                     except Exception as decrypt_error:
                         print(f"🔓 Decryption failed: {decrypt_error}")
-                        print(f"📥 Raw encrypted data: {encrypted_str if 'encrypted_str' in locals() else data.hex()}")
-                else:
-                    print("⏳ Waiting for data...", end='\r')
+                        if 'encrypted_str' in locals():
+                            print(f"📥 Failed data: {encrypted_str[:100]}...")
+                        else:
+                            print(f"📥 Raw data: {data[:50].hex()}...")
                     
+                    print("=" * 40)
+                    
+                else:
+                    # แสดงสถานะการรอ
+                    current_time = time.time()
+                    elapsed = current_time - last_activity
+                    
+                    if int(elapsed) % 30 == 0:  # แสดงทุก 30 วินาที
+                        print(f"⏳ Waiting... (no data for {elapsed:.0f}s, received: {receive_count})")
+                    
+                    time.sleep(0.1)  # ลดการใช้ CPU
+                    
+            except KeyboardInterrupt:
+                print("\n🛑 Stopping receiver...")
+                break
             except Exception as e:
                 print(f"⚠️ Error during receive: {e}")
+                time.sleep(1)
                 
-            time.sleep(1)
-            
     except Exception as e:
         print(f"❌ Failed to initialize LoRa module: {e}")
         import traceback
