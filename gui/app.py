@@ -29,6 +29,8 @@ class SX126xGUI:
 
         self.input_entry = tk.Entry(self.send_frame)
         self.input_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        # เพิ่ม Enter key binding
+        self.input_entry.bind('<Return>', lambda event: self.send_data())
 
         self.send_btn = tk.Button(self.send_frame, text="📤 Send", width=10, command=self.send_data)
         self.send_btn.pack(side=tk.RIGHT)
@@ -54,6 +56,10 @@ class SX126xGUI:
 
         self.status_label = tk.Label(self.right_frame, text="Status: Disconnected", fg="red", anchor="w")
         self.status_label.pack(pady=10, anchor="w")
+
+        # เพิ่ม Debug button
+        self.debug_btn = tk.Button(self.right_frame, text="🐛 Debug Info", command=self.show_debug)
+        self.debug_btn.pack(pady=2, fill=tk.X)
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -82,6 +88,7 @@ class SX126xGUI:
             self.running = True
             threading.Thread(target=self.receive_data_thread, daemon=True).start()
             self.status_label.config(text=f"Status: Connected to {selected_port}", fg="green")
+            self.append_to_console(f"[System] Connected to {selected_port} at {baudrate} baud")
         else:
             messagebox.showerror("Connection Failed", f"Could not connect to {selected_port}")
 
@@ -90,23 +97,95 @@ class SX126xGUI:
             self.lora.disconnect()
         self.running = False
         self.status_label.config(text="Status: Disconnected", fg="red")
+        self.append_to_console("[System] Disconnected")
 
     def send_data(self):
-        text = self.input_entry.get()
-        if self.lora:
-            self.lora.send_data(text+ '\n')
-            self.text_area.insert(tk.END, f"[Sent] {text}\n")
-            self.text_area.yview(tk.END)
-            self.input_entry.delete(0, tk.END)
+        text = self.input_entry.get().strip()
+        if not text:
+            return
+            
+        if self.lora and self.running:
+            try:
+                self.lora.send_data(text + '\n')
+                self.append_to_console(f"[Sent] {text}")
+                self.input_entry.delete(0, tk.END)
+            except Exception as e:
+                self.append_to_console(f"[Error] Send failed: {str(e)}")
+        else:
+            messagebox.showwarning("Warning", "Not connected to device")
 
     def receive_data_thread(self):
+        """แก้ไขฟังก์ชันรับข้อมูลให้รับมือกับปัญหาต่างๆ"""
+        consecutive_empty_reads = 0
+        max_empty_reads = 100  # ป้องกัน busy loop
+        
         while self.running:
-            msg = self.lora.read_data()
-            if msg:
-                print(f"[DEBUG] Received: {msg}")  # Debug output
-                self.text_area.insert(tk.END, f"[Received] {msg}\n")
-                self.text_area.yview(tk.END)
+            try:
+                if not self.lora:
+                    break
+                    
+                # อ่านข้อมูล
+                msg = self.lora.read_data()
+                
+                # ตรวจสอบข้อมูลที่อ่านได้
+                if msg is not None:
+                    # Reset counter เมื่อได้ข้อมูล
+                    consecutive_empty_reads = 0
+                    
+                    # แปลงข้อมูลให้เป็น string ถ้าจำเป็น
+                    if isinstance(msg, bytes):
+                        try:
+                            msg = msg.decode('utf-8', errors='ignore').strip()
+                        except:
+                            msg = str(msg)
+                    else:
+                        msg = str(msg).strip()
+                    
+                    # แสดงข้อมูลถ้าไม่ใช่ string ว่าง
+                    if msg:
+                        print(f"[DEBUG] Raw received: {repr(msg)}")  # Debug รูปแบบ raw
+                        # ใช้ thread-safe method ในการอัปเดต GUI
+                        self.root.after(0, lambda m=msg: self.append_to_console(f"[Received] {m}"))
+                else:
+                    consecutive_empty_reads += 1
+                    if consecutive_empty_reads > max_empty_reads:
+                        # ลด CPU usage เมื่ออ่านข้อมูลว่างติดต่อกันหลายครั้ง
+                        time.sleep(0.5)
+                        consecutive_empty_reads = 0
+                
+            except Exception as e:
+                print(f"[DEBUG] Exception in receive thread: {e}")
+                self.root.after(0, lambda: self.append_to_console(f"[Error] Receive error: {str(e)}"))
+                time.sleep(1)  # รอสักครู่เมื่อเกิด error
+                
             time.sleep(0.1)
+        
+        print("[DEBUG] Receive thread ended")
+
+    def append_to_console(self, message):
+        """Thread-safe method สำหรับเพิ่มข้อความใน console"""
+        try:
+            self.text_area.insert(tk.END, f"{message}\n")
+            self.text_area.yview(tk.END)
+        except Exception as e:
+            print(f"[DEBUG] Error updating console: {e}")
+
+    def show_debug(self):
+        """แสดงข้อมูล debug"""
+        debug_info = []
+        debug_info.append(f"Running: {self.running}")
+        debug_info.append(f"LoRa object: {self.lora}")
+        
+        if self.lora:
+            try:
+                # ลองเรียกใช้ method ต่างๆ เพื่อดูสถานะ
+                debug_info.append(f"Port: {getattr(self.lora, 'port', 'Unknown')}")
+                debug_info.append(f"Baudrate: {getattr(self.lora, 'baudrate', 'Unknown')}")
+                # เพิ่มข้อมูล debug อื่นๆ ตามที่ SX126x class รองรับ
+            except Exception as e:
+                debug_info.append(f"Error getting LoRa info: {e}")
+        
+        messagebox.showinfo("Debug Info", "\n".join(debug_info))
 
     def on_close(self):
         self.disconnect()
