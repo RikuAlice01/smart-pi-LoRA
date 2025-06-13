@@ -82,7 +82,6 @@ class SX126xGUI:
             self.running = True
             threading.Thread(target=self.receive_data_thread, daemon=True).start()
             self.status_label.config(text=f"Status: Connected to {selected_port}", fg="green")
-            messagebox.showinfo("Connected", f"Connected to {selected_port} @ {baudrate} baud")
         else:
             messagebox.showerror("Connection Failed", f"Could not connect to {selected_port}")
 
@@ -95,7 +94,7 @@ class SX126xGUI:
     def send_data(self):
         text = self.input_entry.get()
         if self.lora:
-            self.lora.send_data(text)
+            self.lora.send_data(text+ '\n')
             self.text_area.insert(tk.END, f"[Sent] {text}\n")
             self.text_area.yview(tk.END)
             self.input_entry.delete(0, tk.END)
@@ -104,6 +103,7 @@ class SX126xGUI:
         while self.running:
             msg = self.lora.read_data()
             if msg:
+                print(f"[DEBUG] Received: {msg}")  # Debug output
                 self.text_area.insert(tk.END, f"[Received] {msg}\n")
                 self.text_area.yview(tk.END)
             time.sleep(0.1)
