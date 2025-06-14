@@ -2,7 +2,7 @@ import serial
 import serial.tools.list_ports
 
 class SX126x:
-    def __init__(self, port, baudrate=115200):
+    def __init__(self, port, baudrate=9600):
         self.port = port
         self.baudrate = baudrate
         self.ser = None

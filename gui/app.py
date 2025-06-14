@@ -45,7 +45,7 @@ class SX126xGUI:
 
         tk.Label(self.right_frame, text="Baudrate").pack(anchor="w", pady=(10, 0))
         self.baudrate_entry = ttk.Entry(self.right_frame)
-        self.baudrate_entry.insert(0, "115200")
+        self.baudrate_entry.insert(0, "9600")
         self.baudrate_entry.pack(pady=5, fill=tk.X)
 
         self.connect_btn = tk.Button(self.right_frame, text="🔌 Connect", command=self.connect)
