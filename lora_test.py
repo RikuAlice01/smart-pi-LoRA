@@ -113,7 +113,7 @@ class LoRaTester:
         configs = [
             ('setFrequency', 915.0, 'Frequency (MHz)'),
             ('setSpreadingFactor', 7, 'Spreading Factor'),
-            ('setBandwidth', 125000, 'Bandwidth (Hz)'),
+            ('setBandwidth', 9600, 'Bandwidth (Hz)'),
             ('setCodeRate', 5, 'Code Rate'),
             ('setPreambleLength', 8, 'Preamble Length'),
             ('setTxPower', 14, 'TX Power (dBm)'),

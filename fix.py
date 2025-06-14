@@ -156,7 +156,7 @@ def comprehensive_lora_test():
     tests = [
         ("Frequency Setting", lambda: lora.setFrequency(434000000)),
         ("Power Setting", lambda: lora.setTxPower(14, SX126x.POWER_RAMP_200U)),
-        ("Bandwidth Setting", lambda: lora.setBandwidth(125000)),
+        ("Bandwidth Setting", lambda: lora.setBandwidth(9600)),
         ("Spreading Factor", lambda: lora.setSpreadingFactor(7)),
         ("Coding Rate", lambda: lora.setCodingRate(5)),
         ("Sync Word", lambda: lora.setSyncWord(0x34)),
