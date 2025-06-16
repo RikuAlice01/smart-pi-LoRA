@@ -9,10 +9,17 @@ import threading
 import signal
 import sys
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-import serial
 import argparse
+
+# Try to import serial with fallback
+try:
+    import serial
+    SERIAL_AVAILABLE = True
+except ImportError:
+    SERIAL_AVAILABLE = False
+    print("Warning: pyserial library not available")
 
 # Local imports
 from config import Config
@@ -27,13 +34,13 @@ class LoRaNode:
         """Initialize LoRa node"""
         self.config = Config(config_file)
         self.running = False
-        self.lora_disabled = False  # Add this line
+        self.lora_disabled = False
         
         # Initialize components
         self.lora_driver: Optional[SX126xDriver] = None
         self.sensor_manager: Optional[SensorManager] = None
         self.encryption_manager: Optional[EncryptionManager] = None
-        self.uart_connection: Optional[serial.Serial] = None
+        self.uart_connection: Optional['serial.Serial'] = None
         
         # Threading
         self.sensor_thread: Optional[threading.Thread] = None
@@ -91,16 +98,21 @@ class LoRaNode:
             # Initialize LoRa driver (skip if disabled)
             if not self.lora_disabled:
                 self.logger.info("Initializing LoRa driver...")
-                self.lora_driver = SX126xDriver(
-                    spi_bus=self.config.gpio.spi_bus,
-                    spi_device=self.config.gpio.spi_device,
-                    reset_pin=self.config.gpio.reset_pin,
-                    busy_pin=self.config.gpio.busy_pin,
-                    dio1_pin=self.config.gpio.dio1_pin
-                )
-            
-                # Configure LoRa parameters
-                self.configure_lora()
+                try:
+                    self.lora_driver = SX126xDriver(
+                        spi_bus=self.config.gpio.spi_bus,
+                        spi_device=self.config.gpio.spi_device,
+                        reset_pin=self.config.gpio.reset_pin,
+                        busy_pin=self.config.gpio.busy_pin,
+                        dio1_pin=self.config.gpio.dio1_pin
+                    )
+                    
+                    # Configure LoRa parameters
+                    self.configure_lora()
+                except Exception as e:
+                    self.logger.warning(f"LoRa initialization failed: {e}")
+                    self.logger.info("Continuing in sensors-only mode")
+                    self.lora_disabled = True
             else:
                 self.logger.info("LoRa driver disabled - sensors only mode")
         
@@ -183,6 +195,10 @@ class LoRaNode:
     
     def initialize_uart(self):
         """Initialize UART connection"""
+        if not SERIAL_AVAILABLE:
+            self.logger.warning("UART disabled: pyserial library not available")
+            return
+            
         try:
             self.uart_connection = serial.Serial(
                 port=self.config.network.uart_port,
@@ -204,27 +220,46 @@ class LoRaNode:
                 sensor_data = self.sensor_manager.read_all_sensors()
                 
                 if sensor_data:
-                    # Add metadata
-                    packet_data = {
+                    # Create a more compact packet for LoRa transmission
+                    compact_packet = {
+                        "id": self.config.device.device_id,
+                        "ts": int(time.time()),
+                        "loc": self.config.device.location[:10],  # Truncate location
+                    }
+                    
+                    # Add only essential sensor data
+                    if "temperature" in sensor_data and sensor_data["temperature"] is not None:
+                        compact_packet["temp"] = sensor_data["temperature"]
+                    if "humidity" in sensor_data and sensor_data["humidity"] is not None:
+                        compact_packet["hum"] = sensor_data["humidity"]
+                    if "pressure" in sensor_data and sensor_data["pressure"] is not None:
+                        compact_packet["pres"] = sensor_data["pressure"]
+                    if "battery_voltage" in sensor_data and sensor_data["battery_voltage"] is not None:
+                        compact_packet["bat"] = sensor_data["battery_voltage"]
+                    if "rssi" in sensor_data and sensor_data["rssi"] is not None:
+                        compact_packet["rssi"] = sensor_data["rssi"]
+                    
+                    # Create full packet for UART/logging
+                    full_packet = {
                         "device_id": self.config.device.device_id,
                         "timestamp": time.time(),
                         "location": self.config.device.location,
                         **sensor_data
                     }
                     
-                    # Add to queue for transmission
+                    # Add compact packet to LoRa queue
                     with self.queue_lock:
-                        self.sensor_data_queue.append(packet_data)
+                        self.sensor_data_queue.append(compact_packet)
                         # Limit queue size
                         if len(self.sensor_data_queue) > 100:
                             self.sensor_data_queue.pop(0)
                     
                     self.stats["sensor_readings"] += 1
-                    self.logger.debug(f"Sensor data queued: {packet_data}")
+                    self.logger.debug(f"Sensor data queued: {compact_packet}")
                     
-                    # Forward to UART if enabled
+                    # Forward full packet to UART if enabled
                     if self.uart_connection:
-                        self.forward_to_uart(packet_data)
+                        self.forward_to_uart(full_packet)
                 
                 # Wait for next reading
                 time.sleep(self.config.sensor.read_interval)
@@ -245,9 +280,9 @@ class LoRaNode:
                     if self.sensor_data_queue:
                         packet_data = self.sensor_data_queue.pop(0)
                 
-                if packet_data:
+                if packet_data and self.lora_driver:
                     # Convert to JSON
-                    json_data = json.dumps(packet_data)
+                    json_data = json.dumps(packet_data, separators=(',', ':'))  # Compact JSON
                     
                     # Encrypt if enabled
                     if self.encryption_manager:
@@ -291,10 +326,12 @@ class LoRaNode:
     def print_statistics(self):
         """Print current statistics"""
         uptime = time.time() - self.stats["start_time"]
-        uptime_str = str(datetime.timedelta(seconds=int(uptime)))
+        uptime_str = str(timedelta(seconds=int(uptime)))
         
         print("\n=== LoRa Node Statistics ===")
         print(f"Device ID: {self.config.device.device_id}")
+        print(f"Mode: {'MOCKUP' if self.config.sensor.mock_enabled else 'REAL'}")
+        print(f"LoRa: {'DISABLED' if self.lora_disabled else 'ENABLED'}")
         print(f"Uptime: {uptime_str}")
         print(f"Sensor Readings: {self.stats['sensor_readings']}")
         print(f"Packets Sent: {self.stats['packets_sent']}")
@@ -343,7 +380,7 @@ class LoRaNode:
         self.sensor_thread.start()
     
         # Start LoRa transmission thread (only if LoRa is enabled)
-        if not self.lora_disabled:
+        if not self.lora_disabled and self.lora_driver:
             self.lora_thread = threading.Thread(target=self.lora_transmission_loop, daemon=True)
             self.lora_thread.start()
         else:
@@ -382,7 +419,10 @@ class LoRaNode:
         
         # Cleanup LoRa driver
         if self.lora_driver:
-            del self.lora_driver
+            try:
+                del self.lora_driver
+            except:
+                pass
         
         self.logger.info("LoRa node stopped")
 
