@@ -1,0 +1,76 @@
+{
+  "lora": {
+    "frequency": 915.0,
+    "spreading_factor": 7,
+    "bandwidth": 125,
+    "coding_rate": 5,
+    "tx_power": 14,
+    "preamble_length": 8,
+    "sync_word": 5140,
+    "crc_enabled": true,
+    "header_type": 0,
+    "tx_timeout": 5000,
+    "rx_timeout": 30000
+  },
+  "gpio": {
+    "reset_pin": 22,
+    "busy_pin": 23,
+    "dio1_pin": 24,
+    "spi_bus": 0,
+    "spi_device": 0
+  },
+  "sensor": {
+    "dht22_enabled": true,
+    "dht22_pin": 4,
+    "bmp280_enabled": true,
+    "bmp280_address": 118,
+    "read_interval": 30.0,
+    "mock_enabled": false,
+    "calibration_enabled": true,
+    "outlier_detection": true,
+    "smoothing_enabled": true,
+    "smoothing_window": 5
+  },
+  "device": {
+    "device_id": "",
+    "device_name": "Raspberry Pi LoRa Sensor Node",
+    "location": "Unknown",
+    "description": "Enhanced LoRa sensor node with production features",
+    "tags": ["sensor", "lora", "raspberry-pi"],
+    "battery_monitoring": false,
+    "battery_pin": 26,
+    "firmware_version": "2.0.0"
+  },
+  "network": {
+    "uart_enabled": true,
+    "uart_port": "/dev/ttyUSB0",
+    "uart_baudrate": 9600,
+    "encryption_enabled": true,
+    "encryption_method": "keyfile",
+    "keyfile_path": "keyfile.bin",
+    "network_id": 1,
+    "node_address": 1,
+    "heartbeat_interval": 300,
+    "retry_attempts": 3,
+    "retry_delay": 1.0
+  },
+  "logging": {
+    "log_level": "INFO",
+    "log_file": "lora_node.log",
+    "max_log_size": 10,
+    "backup_count": 5,
+    "console_logging": true,
+    "file_logging": true,
+    "structured_logging": false,
+    "log_format": "%(asctime)s - %(name)s - %(levelname)s - [%(module)s:%(funcName)s:%(lineno)d] - %(message)s"
+  },
+  "performance": {
+    "cpu_limit": 80.0,
+    "memory_limit": 512,
+    "disk_space_limit": 1024,
+    "monitoring_enabled": true,
+    "profiling_enabled": false,
+    "optimization_level": "balanced",
+    "thread_pool_size": 4
+  }
+}

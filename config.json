@@ -6,7 +6,7 @@
     "coding_rate": 5,
     "power_level": 14,
     "preamble_length": 8,
-    "sync_word": 18
+    "sync_word": 5140
   },
   "serial": {
     "port": "COM4",

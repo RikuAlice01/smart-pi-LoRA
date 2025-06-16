@@ -1,56 +1,41 @@
-# Requirements for Raspberry Pi Zero 2W LoRa SX126x HAT
-# Python 3.7+
+# Enhanced LoRa SX126x Sensor Node Requirements
+# Version 2.0.0
 
 # Core dependencies
-pyserial>=3.5
+cryptography>=3.4.8
+psutil>=5.8.0
+jsonschema>=4.0.0
 
-# GPIO and SPI communication
-RPi.GPIO>=0.7.0
+# Hardware interfaces
+RPi.GPIO>=0.7.1
 spidev>=3.5
+smbus2>=0.4.1
 
 # Sensor libraries
-Adafruit-DHT>=1.4.0
+adafruit-circuitpython-dht>=3.7.0
 adafruit-circuitpython-bmp280>=3.2.0
-adafruit-blinka>=8.0.0
+w1thermsensor>=2.0.0
 
-# I2C and board support
-board>=1.0
-busio>=5.0
+# Data handling
+numpy>=1.21.0
+pandas>=1.3.0
 
-# Encryption support (optional but recommended)
-cryptography>=3.4.8
+# Networking and communication
+pyserial>=3.5
+paho-mqtt>=1.6.0
 
-# System monitoring
-psutil>=5.8.0
-
-# JSON handling (built-in but listed for clarity)
-# json - built-in Python module
-
-# Logging (built-in but enhanced options)
-colorlog>=6.6.0
+# Utilities
+click>=8.0.0
+colorama>=0.4.4
+tqdm>=4.62.0
 
 # Development and testing
 pytest>=6.2.0
-pytest-cov>=3.0.0
+pytest-asyncio>=0.18.0
+black>=21.0.0
+flake8>=4.0.0
 
-# Database support
-sqlite3  # Built-in Python module (listed for clarity)
-
-# Optional: Advanced sensor support
-# w1thermsensor>=2.0.0  # For DS18B20 temperature sensors
-# gpiozero>=1.6.0       # Alternative GPIO library
-
-# Optional: Network and communication
-# paho-mqtt>=1.6.0      # For MQTT communication
-# requests>=2.28.0      # For HTTP API calls
-
-# Optional: Data processing
-# numpy>=1.21.0         # For advanced data processing
-# pandas>=1.3.0         # For data analysis
-
-# Optional: Plotting and visualization
-# matplotlib>=3.5.0     # For local plotting
-# plotly>=5.0.0         # For interactive plots
-
-# Note: Some packages may require system-level dependencies
-# Install with: sudo apt install python3-dev libffi-dev libssl-dev
+# Optional: Advanced features
+# scipy>=1.7.0  # For advanced signal processing
+# matplotlib>=3.4.0  # For data visualization
+# influxdb-client>=1.24.0  # For InfluxDB integration
