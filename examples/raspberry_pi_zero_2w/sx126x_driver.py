@@ -1,6 +1,7 @@
 """
 SX126x LoRa Driver for Raspberry Pi
 Low-level driver for SX1261/SX1262/SX1268 LoRa transceivers over SPI
+Enhanced with better transmission handling and debugging
 """
 
 import time
@@ -101,7 +102,7 @@ class SX126xIRQ(IntEnum):
     IRQ_ALL = 0x3FF
 
 class SX126xDriver:
-    """SX126x LoRa driver class"""
+    """SX126x LoRa driver class with enhanced transmission handling"""
     
     def __init__(self, spi_bus=0, spi_device=0, reset_pin=22, busy_pin=23, dio1_pin=24):
         """
@@ -352,31 +353,70 @@ class SX126xDriver:
         self.write_register(SX126xRegisters.REG_LORA_SYNC_WORD_LSB, 
                            [sync_word & 0xFF])
     
-    def send_payload(self, payload: bytes) -> bool:
-        """Send LoRa payload"""
+    def send_payload(self, payload: bytes, timeout: float = 5.0) -> bool:
+        """Send LoRa payload with enhanced error handling"""
         try:
+            # Ensure we're in standby mode first
+            self.set_standby()
+            time.sleep(0.01)
+            
+            # Clear any pending IRQs
+            self.clear_irq_status(SX126xIRQ.IRQ_ALL)
+            time.sleep(0.01)
+            
             # Write payload to buffer
             self.write_buffer(0x00, list(payload))
+            time.sleep(0.01)
             
-            # Set TX mode
+            # Update packet length
+            self.set_lora_packet_params(
+                preamble_length=8,
+                header_type=0,
+                payload_length=len(payload),
+                crc_type=1,
+                invert_iq=0
+            )
+            time.sleep(0.01)
+            
+            # Set DIO IRQ for TX_DONE only
+            self.set_dio_irq_params(
+                irq_mask=SX126xIRQ.IRQ_TX_DONE | SX126xIRQ.IRQ_TIMEOUT,
+                dio1_mask=SX126xIRQ.IRQ_TX_DONE | SX126xIRQ.IRQ_TIMEOUT,
+                dio2_mask=0x0000,
+                dio3_mask=0x0000
+            )
+            time.sleep(0.01)
+            
+            # Start transmission
             self.set_tx(timeout=0x0F4240)  # 1 second timeout
             
-            # Wait for TX done
+            # Wait for completion
             start_time = time.time()
-            while time.time() - start_time < 5.0:  # 5 second timeout
+            while (time.time() - start_time) < timeout:
                 irq_status = self.get_irq_status()
+                
                 if irq_status & SX126xIRQ.IRQ_TX_DONE:
                     self.clear_irq_status(SX126xIRQ.IRQ_ALL)
+                    self.set_standby()  # Return to standby
                     return True
                 elif irq_status & SX126xIRQ.IRQ_TIMEOUT:
                     self.clear_irq_status(SX126xIRQ.IRQ_ALL)
+                    self.set_standby()  # Return to standby
                     return False
+                
                 time.sleep(0.01)
             
+            # Timeout occurred
+            self.clear_irq_status(SX126xIRQ.IRQ_ALL)
+            self.set_standby()  # Return to standby
             return False
             
         except Exception as e:
-            print(f"Error sending payload: {e}")
+            print(f"Error in send_payload: {e}")
+            try:
+                self.set_standby()  # Try to return to safe state
+            except:
+                pass
             return False
     
     def receive_payload(self, timeout=30.0) -> Optional[Tuple[bytes, int, int, int]]:
