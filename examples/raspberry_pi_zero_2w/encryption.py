@@ -138,28 +138,3 @@ class EncryptionManager:
         except Exception as e:
             print(f"AES decryption error: {e}")
             return encrypted_data
-
-```python file="examples/raspberry_pi_zero_2w/requirements.txt"
-# Requirements for Raspberry Pi Zero 2W LoRa SX126x HAT
-# Python 3.7+
-
-# Core dependencies
-pyserial>=3.5
-
-# GPIO and SPI
-RPi.GPIO>=0.7.0
-spidev>=3.5
-
-# Sensor libraries
-Adafruit-DHT>=1.4.0
-adafruit-circuitpython-bmp280>=3.2.0
-adafruit-blinka>=8.0.0
-
-# Encryption (optional)
-cryptography>=3.4.8
-
-# System utilities
-psutil>=5.8.0
-
-# Development and testing
-pytest>=6.2.0
