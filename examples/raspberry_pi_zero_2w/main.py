@@ -1,0 +1,393 @@
+"""
+Main application for Raspberry Pi Zero 2W LoRa SX126x HAT
+Sensor data collection and LoRa transmission
+"""
+
+import time
+import json
+import threading
+import signal
+import sys
+import logging
+from datetime import datetime
+from typing import Optional, Dict, Any
+import serial
+
+# Local imports
+from config import Config
+from sx126x_driver import SX126xDriver
+from sensors import SensorManager
+from encryption import EncryptionManager
+
+class LoRaNode:
+    """Main LoRa sensor node application"""
+    
+    def __init__(self, config_file: str = "config.json"):
+        """Initialize LoRa node"""
+        self.config = Config(config_file)
+        self.running = False
+        
+        # Initialize components
+        self.lora_driver: Optional[SX126xDriver] = None
+        self.sensor_manager: Optional[SensorManager] = None
+        self.encryption_manager: Optional[EncryptionManager] = None
+        self.uart_connection: Optional[serial.Serial] = None
+        
+        # Threading
+        self.sensor_thread: Optional[threading.Thread] = None
+        self.lora_thread: Optional[threading.Thread] = None
+        
+        # Data queues
+        self.sensor_data_queue = []
+        self.queue_lock = threading.Lock()
+        
+        # Statistics
+        self.stats = {
+            "packets_sent": 0,
+            "packets_failed": 0,
+            "sensor_readings": 0,
+            "start_time": time.time(),
+            "last_transmission": None
+        }
+        
+        # Setup logging
+        self.setup_logging()
+        
+        # Setup signal handlers
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
+    
+    def setup_logging(self):
+        """Setup logging configuration"""
+        log_level = getattr(logging, self.config.logging.log_level.upper())
+        
+        logging.basicConfig(
+            level=log_level,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(self.config.logging.log_file),
+                logging.StreamHandler(sys.stdout)
+            ]
+        )
+        
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("LoRa Node starting up...")
+    
+    def signal_handler(self, signum, frame):
+        """Handle shutdown signals"""
+        self.logger.info(f"Received signal {signum}, shutting down...")
+        self.stop()
+    
+    def initialize_components(self) -> bool:
+        """Initialize all components"""
+        try:
+            # Validate configuration
+            if not self.config.validate_config():
+                self.logger.error("Configuration validation failed")
+                return False
+            
+            # Initialize LoRa driver
+            self.logger.info("Initializing LoRa driver...")
+            self.lora_driver = SX126xDriver(
+                spi_bus=self.config.gpio.spi_bus,
+                spi_device=self.config.gpio.spi_device,
+                reset_pin=self.config.gpio.reset_pin,
+                busy_pin=self.config.gpio.busy_pin,
+                dio1_pin=self.config.gpio.dio1_pin
+            )
+            
+            # Configure LoRa parameters
+            self.configure_lora()
+            
+            # Initialize sensor manager
+            self.logger.info("Initializing sensors...")
+            self.sensor_manager = SensorManager(self.config)
+            
+            # Initialize encryption if enabled
+            if self.config.network.encryption_enabled:
+                self.logger.info("Initializing encryption...")
+                self.encryption_manager = EncryptionManager(
+                    method=self.config.network.encryption_method,
+                    key=self.config.network.encryption_key
+                )
+            
+            # Initialize UART connection if enabled
+            if self.config.network.uart_enabled:
+                self.logger.info("Initializing UART connection...")
+                self.initialize_uart()
+            
+            self.logger.info("All components initialized successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize components: {e}")
+            return False
+    
+    def configure_lora(self):
+        """Configure LoRa parameters"""
+        try:
+            # Set standby mode
+            self.lora_driver.set_standby()
+            
+            # Set packet type to LoRa
+            self.lora_driver.set_packet_type(0x01)
+            
+            # Set frequency
+            frequency_hz = self.config.get_frequency_hz()
+            self.lora_driver.set_rf_frequency(frequency_hz)
+            self.logger.info(f"LoRa frequency set to {frequency_hz} Hz")
+            
+            # Set modulation parameters
+            sf, bw, cr, ldro = self.config.get_lora_modulation_params()
+            self.lora_driver.set_lora_modulation_params(sf, bw, cr, ldro)
+            self.logger.info(f"LoRa modulation: SF{self.config.lora.spreading_factor}, "
+                           f"BW{self.config.lora.bandwidth}kHz, CR4/{self.config.lora.coding_rate}")
+            
+            # Set packet parameters
+            self.lora_driver.set_lora_packet_params(
+                preamble_length=self.config.lora.preamble_length,
+                header_type=self.config.lora.header_type,
+                payload_length=255,  # Maximum payload length
+                crc_type=1 if self.config.lora.crc_enabled else 0,
+                invert_iq=0
+            )
+            
+            # Set TX power
+            self.lora_driver.set_tx_params(self.config.lora.tx_power)
+            self.logger.info(f"LoRa TX power set to {self.config.lora.tx_power} dBm")
+            
+            # Set buffer base addresses
+            self.lora_driver.set_buffer_base_address(0x00, 0x80)
+            
+            # Set sync word
+            self.lora_driver.set_lora_sync_word(self.config.lora.sync_word)
+            
+            # Set DIO IRQ parameters
+            self.lora_driver.set_dio_irq_params(
+                irq_mask=0x03FF,  # All IRQs
+                dio1_mask=0x03FF,  # All IRQs on DIO1
+                dio2_mask=0x0000,
+                dio3_mask=0x0000
+            )
+            
+            self.logger.info("LoRa configuration completed")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to configure LoRa: {e}")
+            raise
+    
+    def initialize_uart(self):
+        """Initialize UART connection"""
+        try:
+            self.uart_connection = serial.Serial(
+                port=self.config.network.uart_port,
+                baudrate=self.config.network.uart_baudrate,
+                timeout=1.0
+            )
+            self.logger.info(f"UART connection established on {self.config.network.uart_port}")
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize UART: {e}")
+            self.uart_connection = None
+    
+    def sensor_loop(self):
+        """Main sensor reading loop"""
+        self.logger.info("Sensor loop started")
+        
+        while self.running:
+            try:
+                # Read sensor data
+                sensor_data = self.sensor_manager.read_all_sensors()
+                
+                if sensor_data:
+                    # Add metadata
+                    packet_data = {
+                        "device_id": self.config.device.device_id,
+                        "timestamp": time.time(),
+                        "location": self.config.device.location,
+                        **sensor_data
+                    }
+                    
+                    # Add to queue for transmission
+                    with self.queue_lock:
+                        self.sensor_data_queue.append(packet_data)
+                        # Limit queue size
+                        if len(self.sensor_data_queue) > 100:
+                            self.sensor_data_queue.pop(0)
+                    
+                    self.stats["sensor_readings"] += 1
+                    self.logger.debug(f"Sensor data queued: {packet_data}")
+                    
+                    # Forward to UART if enabled
+                    if self.uart_connection:
+                        self.forward_to_uart(packet_data)
+                
+                # Wait for next reading
+                time.sleep(self.config.sensor.read_interval)
+                
+            except Exception as e:
+                self.logger.error(f"Error in sensor loop: {e}")
+                time.sleep(5)  # Wait before retrying
+    
+    def lora_transmission_loop(self):
+        """Main LoRa transmission loop"""
+        self.logger.info("LoRa transmission loop started")
+        
+        while self.running:
+            try:
+                # Check if there's data to transmit
+                packet_data = None
+                with self.queue_lock:
+                    if self.sensor_data_queue:
+                        packet_data = self.sensor_data_queue.pop(0)
+                
+                if packet_data:
+                    # Convert to JSON
+                    json_data = json.dumps(packet_data)
+                    
+                    # Encrypt if enabled
+                    if self.encryption_manager:
+                        json_data = self.encryption_manager.encrypt(json_data)
+                        self.logger.debug("Data encrypted")
+                    
+                    # Transmit via LoRa
+                    payload = json_data.encode('utf-8')
+                    
+                    if len(payload) <= 255:  # Check payload size limit
+                        success = self.lora_driver.send_payload(payload)
+                        
+                        if success:
+                            self.stats["packets_sent"] += 1
+                            self.stats["last_transmission"] = time.time()
+                            self.logger.info(f"Packet transmitted successfully: {self.config.device.device_id}")
+                        else:
+                            self.stats["packets_failed"] += 1
+                            self.logger.warning("Failed to transmit packet")
+                    else:
+                        self.logger.warning(f"Payload too large: {len(payload)} bytes")
+                        self.stats["packets_failed"] += 1
+                
+                # Small delay to prevent excessive CPU usage
+                time.sleep(0.1)
+                
+            except Exception as e:
+                self.logger.error(f"Error in LoRa transmission loop: {e}")
+                time.sleep(1)
+    
+    def forward_to_uart(self, data: Dict[str, Any]):
+        """Forward data to UART connection"""
+        try:
+            if self.uart_connection and self.uart_connection.is_open:
+                json_data = json.dumps(data) + "\n"
+                self.uart_connection.write(json_data.encode('utf-8'))
+                self.logger.debug("Data forwarded to UART")
+        except Exception as e:
+            self.logger.warning(f"Failed to forward data to UART: {e}")
+    
+    def print_statistics(self):
+        """Print current statistics"""
+        uptime = time.time() - self.stats["start_time"]
+        uptime_str = str(datetime.timedelta(seconds=int(uptime)))
+        
+        print("\n=== LoRa Node Statistics ===")
+        print(f"Device ID: {self.config.device.device_id}")
+        print(f"Uptime: {uptime_str}")
+        print(f"Sensor Readings: {self.stats['sensor_readings']}")
+        print(f"Packets Sent: {self.stats['packets_sent']}")
+        print(f"Packets Failed: {self.stats['packets_failed']}")
+        
+        if self.stats["last_transmission"]:
+            last_tx = datetime.fromtimestamp(self.stats["last_transmission"])
+            print(f"Last Transmission: {last_tx.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        success_rate = 0
+        if self.stats["packets_sent"] + self.stats["packets_failed"] > 0:
+            success_rate = (self.stats["packets_sent"] / 
+                          (self.stats["packets_sent"] + self.stats["packets_failed"])) * 100
+        print(f"Success Rate: {success_rate:.1f}%")
+        
+        # Queue status
+        with self.queue_lock:
+            queue_size = len(self.sensor_data_queue)
+        print(f"Queue Size: {queue_size}")
+        print("============================\n")
+    
+    def start(self):
+        """Start the LoRa node"""
+        self.logger.info("Starting LoRa node...")
+        
+        # Initialize components
+        if not self.initialize_components():
+            self.logger.error("Failed to initialize components")
+            return False
+        
+        # Print configuration
+        self.config.print_config()
+        
+        # Set running flag
+        self.running = True
+        
+        # Start sensor thread
+        self.sensor_thread = threading.Thread(target=self.sensor_loop, daemon=True)
+        self.sensor_thread.start()
+        
+        # Start LoRa transmission thread
+        self.lora_thread = threading.Thread(target=self.lora_transmission_loop, daemon=True)
+        self.lora_thread.start()
+        
+        self.logger.info("LoRa node started successfully")
+        
+        # Main loop
+        try:
+            while self.running:
+                time.sleep(10)  # Print stats every 10 seconds
+                self.print_statistics()
+                
+        except KeyboardInterrupt:
+            self.logger.info("Keyboard interrupt received")
+        
+        return True
+    
+    def stop(self):
+        """Stop the LoRa node"""
+        self.logger.info("Stopping LoRa node...")
+        
+        # Set running flag to False
+        self.running = False
+        
+        # Wait for threads to finish
+        if self.sensor_thread and self.sensor_thread.is_alive():
+            self.sensor_thread.join(timeout=5)
+        
+        if self.lora_thread and self.lora_thread.is_alive():
+            self.lora_thread.join(timeout=5)
+        
+        # Close UART connection
+        if self.uart_connection and self.uart_connection.is_open:
+            self.uart_connection.close()
+        
+        # Cleanup LoRa driver
+        if self.lora_driver:
+            del self.lora_driver
+        
+        self.logger.info("LoRa node stopped")
+
+def main():
+    """Main entry point"""
+    print("LoRa SX126x Sensor Node for Raspberry Pi Zero 2W")
+    print("=" * 50)
+    
+    # Create and start LoRa node
+    node = LoRaNode()
+    
+    try:
+        node.start()
+    except Exception as e:
+        print(f"Error starting LoRa node: {e}")
+        return 1
+    finally:
+        node.stop()
+    
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

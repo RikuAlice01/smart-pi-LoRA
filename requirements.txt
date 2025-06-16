@@ -1,3 +1,24 @@
-cryptography>=40.0
-LoRaRF
-pyserial
+# LoRa SX126x Gateway Desktop Application Requirements
+# Python 3.10+
+
+# GUI Framework
+customtkinter>=5.2.0
+tkinter  # Built-in with Python
+
+# Serial Communication
+pyserial>=3.5
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Encryption Support
+cryptography>=41.0.0
+
+# Optional: For advanced plotting (future feature)
+# matplotlib>=3.7.0
+# plotly>=5.15.0
+
+# Development and Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
