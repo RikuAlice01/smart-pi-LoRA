@@ -3,18 +3,21 @@ import busio
 import digitalio
 import adafruit_rfm9x
 
-# กำหนด SPI และ pins
-spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-cs = digitalio.DigitalInOut(board.CE1)
-reset = digitalio.DigitalInOut(board.D25)
-
-# สร้าง RFM object
-rfm9x = adafruit_rfm9x.RFM9x(spi, cs, reset, 915.0)  # ความถี่ 915MHz
-
-# ส่งข้อมูล
-rfm9x.send(bytes("Hello World!", "utf-8"))
-
-# รับข้อมูล
-packet = rfm9x.receive()
-if packet is not None:
-    print(f"Received: {packet}")
+try:
+    # กำหนด SPI
+    spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
+    
+    # กำหนด pins สำหรับ SX126x HAT (ปรับตามของจริง)
+    cs = digitalio.DigitalInOut(board.D8)    # GPIO8 (CE0)
+    reset = digitalio.DigitalInOut(board.D22) # GPIO22
+    
+    print("Initializing RFM9x...")
+    
+    # ลองความถี่ที่เหมาะสมกับไทย
+    rfm9x = adafruit_rfm9x.RFM9x(spi, cs, reset, 915.0)  # 923MHz
+    
+    print("RFM9x initialized successfully!")
+    print(f"Frequency: {rfm9x.frequency_mhz} MHz")
+    
+except Exception as e:
+    print(f"Error: {e}")
