@@ -1,0 +1,24 @@
+{
+  "lora": {
+    "frequency": 915.0,
+    "bandwidth": 125,
+    "spreading_factor": 7,
+    "coding_rate": 5,
+    "power_level": 14,
+    "preamble_length": 8,
+    "sync_word": 18
+  },
+  "serial": {
+    "port": "COM4",
+    "baudrate": 9600,
+    "timeout": 1.0,
+    "bytesize": 8,
+    "parity": "N",
+    "stopbits": 1
+  },
+  "encryption": {
+    "enabled": false,
+    "method": "XOR",
+    "key": "default_key_123456"
+  }
+}

@@ -2,39 +2,39 @@
 # Python 3.7+
 
 # Core dependencies
-pyserial
+pyserial>=3.5
 
 # GPIO and SPI communication
-RPi.GPIO
-spidev
+RPi.GPIO>=0.7.0
+spidev>=3.5
 
 # Sensor libraries
-Adafruit-DHT
-adafruit-circuitpython-bmp280
-adafruit-blinka
+Adafruit-DHT>=1.4.0
+adafruit-circuitpython-bmp280>=3.2.0
+adafruit-blinka>=8.0.0
 
 # I2C and board support
-board
-busio
+board>=1.0
+busio>=5.0
 
 # Encryption support (optional but recommended)
-cryptography
+cryptography>=3.4.8
 
 # System monitoring
-psutil
+psutil>=5.8.0
 
 # JSON handling (built-in but listed for clarity)
 # json - built-in Python module
 
 # Logging (built-in but enhanced options)
-colorlog
+colorlog>=6.6.0
 
 # Development and testing
-pytest
-pytest-cov
+pytest>=6.2.0
+pytest-cov>=3.0.0
 
-# Optional: Additional sensor libraries
-# Adafruit_DHT
+# Database support
+sqlite3  # Built-in Python module (listed for clarity)
 
 # Optional: Advanced sensor support
 # w1thermsensor>=2.0.0  # For DS18B20 temperature sensors
