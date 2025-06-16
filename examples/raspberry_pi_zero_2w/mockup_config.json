@@ -1,0 +1,53 @@
+{
+  "lora": {
+    "frequency": 915.0,
+    "spreading_factor": 7,
+    "bandwidth": 125,
+    "coding_rate": 5,
+    "tx_power": 14,
+    "preamble_length": 8,
+    "sync_word": 5140,
+    "crc_enabled": true,
+    "header_type": 0,
+    "tx_timeout": 5000,
+    "rx_timeout": 30000
+  },
+  "gpio": {
+    "reset_pin": 22,
+    "busy_pin": 23,
+    "dio1_pin": 24,
+    "spi_bus": 0,
+    "spi_device": 0
+  },
+  "sensor": {
+    "dht22_enabled": false,
+    "dht22_pin": 4,
+    "bmp280_enabled": false,
+    "bmp280_address": 118,
+    "read_interval": 5.0,
+    "mock_enabled": true
+  },
+  "device": {
+    "device_id": "MOCKUP_001",
+    "device_name": "Raspberry Pi LoRa Mockup Node",
+    "location": "Development Lab",
+    "battery_monitoring": true,
+    "battery_pin": 26
+  },
+  "network": {
+    "uart_enabled": true,
+    "uart_port": "/dev/ttyUSB0",
+    "uart_baudrate": 9600,
+    "encryption_enabled": false,
+    "encryption_method": "AES",
+    "encryption_key": "MockupTestKey123",
+    "network_id": 1,
+    "node_address": 1
+  },
+  "logging": {
+    "log_level": "INFO",
+    "log_file": "mockup_lora_node.log",
+    "max_log_size": 10,
+    "backup_count": 5
+  }
+}

@@ -161,41 +161,151 @@ class BatteryMonitor:
         return {"battery_voltage": None}
 
 class MockSensor:
-    """Mock sensor for testing"""
+    """Enhanced mock sensor for testing with realistic variations"""
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        
+        # Base values with realistic ranges
         self.base_temp = 22.0
         self.base_humidity = 50.0
         self.base_pressure = 1013.25
         
-    def read(self) -> Dict[str, Any]:
-        """Generate mock sensor data"""
-        # Generate realistic variations
-        temp_variation = random.uniform(-2, 2)
-        humidity_variation = random.uniform(-5, 5)
-        pressure_variation = random.uniform(-10, 10)
+        # Simulation state
+        self.time_offset = 0
+        self.weather_pattern = "stable"  # stable, warming, cooling, stormy
+        self.pattern_duration = 0
         
+        # Device simulation
+        self.device_health = 100.0  # Simulated device health percentage
+        self.battery_drain_rate = 0.001  # Battery drain per reading
+        self.current_battery = 4.1  # Start with good battery
+        
+        self.logger.info("Enhanced mock sensor initialized")
+    
+    def _simulate_weather_pattern(self):
+        """Simulate realistic weather patterns"""
+        import random
+        
+        # Change weather pattern occasionally
+        if self.pattern_duration <= 0:
+            patterns = ["stable", "warming", "cooling", "stormy", "humid", "dry"]
+            self.weather_pattern = random.choice(patterns)
+            self.pattern_duration = random.randint(10, 50)  # Pattern lasts 10-50 readings
+            self.logger.debug(f"Weather pattern changed to: {self.weather_pattern}")
+        
+        self.pattern_duration -= 1
+        
+        # Apply pattern effects
+        temp_trend = 0
+        humidity_trend = 0
+        pressure_trend = 0
+        
+        if self.weather_pattern == "warming":
+            temp_trend = 0.1
+            humidity_trend = -0.2
+            pressure_trend = 0.05
+        elif self.weather_pattern == "cooling":
+            temp_trend = -0.1
+            humidity_trend = 0.1
+            pressure_trend = -0.05
+        elif self.weather_pattern == "stormy":
+            temp_trend = random.uniform(-0.2, 0.1)
+            humidity_trend = 0.3
+            pressure_trend = -0.2
+        elif self.weather_pattern == "humid":
+            humidity_trend = 0.2
+            temp_trend = 0.05
+        elif self.weather_pattern == "dry":
+            humidity_trend = -0.2
+            temp_trend = 0.1
+        
+        return temp_trend, humidity_trend, pressure_trend
+    
+    def _simulate_daily_cycle(self):
+        """Simulate daily temperature and humidity cycles"""
+        import math
+        
+        # Simulate time of day effect (24-hour cycle)
+        hour_of_day = (self.time_offset % 1440) / 60  # Convert to hours (1440 min = 24h)
+        
+        # Temperature varies throughout the day (peak at 2 PM, low at 6 AM)
+        temp_cycle = 3 * math.sin((hour_of_day - 6) * math.pi / 12)
+        
+        # Humidity is inverse to temperature (high at night, low during day)
+        humidity_cycle = -10 * math.sin((hour_of_day - 6) * math.pi / 12)
+        
+        return temp_cycle, humidity_cycle
+    
+    def read(self) -> Dict[str, Any]:
+        """Generate enhanced mock sensor data with realistic patterns"""
+        self.time_offset += 1
+        
+        # Get weather pattern effects
+        temp_trend, humidity_trend, pressure_trend = self._simulate_weather_pattern()
+        
+        # Get daily cycle effects
+        temp_cycle, humidity_cycle = self._simulate_daily_cycle()
+        
+        # Generate base variations
+        temp_variation = random.uniform(-1, 1) + temp_trend + temp_cycle
+        humidity_variation = random.uniform(-3, 3) + humidity_trend + humidity_cycle
+        pressure_variation = random.uniform(-5, 5) + pressure_trend
+        
+        # Calculate final values
         temperature = self.base_temp + temp_variation
         humidity = max(0, min(100, self.base_humidity + humidity_variation))
         pressure = self.base_pressure + pressure_variation
+        
+        # Calculate altitude from pressure
         altitude = 44330 * (1 - (pressure / 1013.25) ** 0.1903)
         
-        # Simulate battery voltage (3.3V to 4.2V for Li-ion)
-        battery_voltage = random.uniform(3.3, 4.2)
+        # Simulate battery drain
+        self.current_battery -= self.battery_drain_rate
+        if self.current_battery < 3.0:
+            self.current_battery = 4.2  # "Replace battery"
         
-        # Simulate RSSI
-        rssi = random.randint(-120, -60)
+        # Add some noise to battery reading
+        battery_voltage = self.current_battery + random.uniform(-0.05, 0.05)
         
-        return {
+        # Simulate RSSI based on "distance" and "interference"
+        base_rssi = -75
+        rssi_variation = random.randint(-15, 10)
+        rssi = base_rssi + rssi_variation
+        
+        # Simulate device health degradation
+        self.device_health -= random.uniform(0, 0.01)
+        if self.device_health < 50:
+            self.device_health = 100  # "Maintenance performed"
+        
+        data = {
             "temperature": round(temperature, 1),
             "humidity": round(humidity, 1),
             "pressure": round(pressure, 1),
             "altitude": round(altitude, 1),
             "temperature_bmp": round(temperature + random.uniform(-0.5, 0.5), 1),
             "battery_voltage": round(battery_voltage, 2),
-            "rssi": rssi
+            "rssi": rssi,
+            "device_health": round(self.device_health, 1),
+            "weather_pattern": self.weather_pattern,
+            "readings_count": self.time_offset
         }
+        
+        # Occasionally simulate sensor errors
+        if random.random() < 0.02:  # 2% chance of error
+            error_type = random.choice(["temp_error", "humidity_error", "pressure_error"])
+            if error_type == "temp_error":
+                data["temperature"] = None
+                self.logger.warning("Simulated temperature sensor error")
+            elif error_type == "humidity_error":
+                data["humidity"] = None
+                self.logger.warning("Simulated humidity sensor error")
+            elif error_type == "pressure_error":
+                data["pressure"] = None
+                data["altitude"] = None
+                self.logger.warning("Simulated pressure sensor error")
+        
+        return data
 
 class SensorManager:
     """Manages all sensors"""
@@ -304,6 +414,12 @@ class SensorManager:
                     print(f"Battery Voltage: {value} V")
                 elif key == "rssi":
                     print(f"RSSI: {value} dBm")
+                elif key == "device_health":
+                    print(f"Device Health: {value}%")
+                elif key == "weather_pattern":
+                    print(f"Weather Pattern: {value}")
+                elif key == "readings_count":
+                    print(f"Readings Count: {value}")
         
         print("==================\n")
 

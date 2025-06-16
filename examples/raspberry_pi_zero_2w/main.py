@@ -12,6 +12,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 import serial
+import argparse
 
 # Local imports
 from config import Config
@@ -26,6 +27,7 @@ class LoRaNode:
         """Initialize LoRa node"""
         self.config = Config(config_file)
         self.running = False
+        self.lora_disabled = False  # Add this line
         
         # Initialize components
         self.lora_driver: Optional[SX126xDriver] = None
@@ -85,24 +87,27 @@ class LoRaNode:
             if not self.config.validate_config():
                 self.logger.error("Configuration validation failed")
                 return False
+        
+            # Initialize LoRa driver (skip if disabled)
+            if not self.lora_disabled:
+                self.logger.info("Initializing LoRa driver...")
+                self.lora_driver = SX126xDriver(
+                    spi_bus=self.config.gpio.spi_bus,
+                    spi_device=self.config.gpio.spi_device,
+                    reset_pin=self.config.gpio.reset_pin,
+                    busy_pin=self.config.gpio.busy_pin,
+                    dio1_pin=self.config.gpio.dio1_pin
+                )
             
-            # Initialize LoRa driver
-            self.logger.info("Initializing LoRa driver...")
-            self.lora_driver = SX126xDriver(
-                spi_bus=self.config.gpio.spi_bus,
-                spi_device=self.config.gpio.spi_device,
-                reset_pin=self.config.gpio.reset_pin,
-                busy_pin=self.config.gpio.busy_pin,
-                dio1_pin=self.config.gpio.dio1_pin
-            )
-            
-            # Configure LoRa parameters
-            self.configure_lora()
-            
+                # Configure LoRa parameters
+                self.configure_lora()
+            else:
+                self.logger.info("LoRa driver disabled - sensors only mode")
+        
             # Initialize sensor manager
             self.logger.info("Initializing sensors...")
             self.sensor_manager = SensorManager(self.config)
-            
+        
             # Initialize encryption if enabled
             if self.config.network.encryption_enabled:
                 self.logger.info("Initializing encryption...")
@@ -110,15 +115,15 @@ class LoRaNode:
                     method=self.config.network.encryption_method,
                     key=self.config.network.encryption_key
                 )
-            
+        
             # Initialize UART connection if enabled
             if self.config.network.uart_enabled:
                 self.logger.info("Initializing UART connection...")
                 self.initialize_uart()
-            
+        
             self.logger.info("All components initialized successfully")
             return True
-            
+        
         except Exception as e:
             self.logger.error(f"Failed to initialize components: {e}")
             return False
@@ -314,37 +319,47 @@ class LoRaNode:
     def start(self):
         """Start the LoRa node"""
         self.logger.info("Starting LoRa node...")
-        
+    
         # Initialize components
         if not self.initialize_components():
             self.logger.error("Failed to initialize components")
             return False
-        
+    
         # Print configuration
         self.config.print_config()
-        
+    
+        # Print mode information
+        if self.config.sensor.mock_enabled:
+            self.logger.info("🎭 Running in MOCKUP mode with simulated sensors")
+    
+        if self.lora_disabled:
+            self.logger.info("📡 LoRa transmission DISABLED - sensors only")
+    
         # Set running flag
         self.running = True
-        
+    
         # Start sensor thread
         self.sensor_thread = threading.Thread(target=self.sensor_loop, daemon=True)
         self.sensor_thread.start()
-        
-        # Start LoRa transmission thread
-        self.lora_thread = threading.Thread(target=self.lora_transmission_loop, daemon=True)
-        self.lora_thread.start()
-        
+    
+        # Start LoRa transmission thread (only if LoRa is enabled)
+        if not self.lora_disabled:
+            self.lora_thread = threading.Thread(target=self.lora_transmission_loop, daemon=True)
+            self.lora_thread.start()
+        else:
+            self.logger.info("LoRa transmission thread not started (disabled)")
+    
         self.logger.info("LoRa node started successfully")
-        
+    
         # Main loop
         try:
             while self.running:
                 time.sleep(10)  # Print stats every 10 seconds
                 self.print_statistics()
-                
+        
         except KeyboardInterrupt:
             self.logger.info("Keyboard interrupt received")
-        
+    
         return True
     
     def stop(self):
@@ -371,23 +386,124 @@ class LoRaNode:
         
         self.logger.info("LoRa node stopped")
 
+def print_usage():
+    """Print usage examples"""
+    print("\nUsage Examples:")
+    print("  python main.py                    # Normal mode with real sensors")
+    print("  python main.py mockup             # Mockup mode with simulated data")
+    print("  python main.py test               # Hardware test mode")
+    print("  python main.py mockup --no-lora   # Mockup mode without LoRa")
+    print("  python main.py --interval 10      # Override sensor interval to 10s")
+    print("  python main.py --log-level DEBUG  # Enable debug logging")
+    print()
+
 def main():
     """Main entry point"""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='LoRa SX126x Sensor Node for Raspberry Pi Zero 2W')
+    parser.add_argument('mode', nargs='?', default='normal', 
+                       choices=['normal', 'mockup', 'test'],
+                       help='Operation mode: normal (default), mockup, or test')
+    parser.add_argument('--config', default='config.json',
+                       help='Configuration file path (default: config.json)')
+    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                       help='Override log level')
+    parser.add_argument('--no-lora', action='store_true',
+                       help='Disable LoRa transmission (sensors only)')
+    parser.add_argument('--interval', type=float,
+                       help='Override sensor reading interval in seconds')
+    
+    args = parser.parse_args()
+    
     print("LoRa SX126x Sensor Node for Raspberry Pi Zero 2W")
     print("=" * 50)
+    print(f"Mode: {args.mode.upper()}")
     
-    # Create and start LoRa node
-    node = LoRaNode()
-    
+    # Handle different modes
+    if args.mode == 'mockup':
+        print("🎭 MOCKUP MODE: Using simulated sensor data")
+        return run_mockup_mode(args)
+    elif args.mode == 'test':
+        print("🧪 TEST MODE: Hardware testing")
+        return run_test_mode(args)
+    else:
+        print("🚀 NORMAL MODE: Real sensor operation")
+        return run_normal_mode(args)
+
+def run_mockup_mode(args):
+    """Run in mockup mode with simulated data"""
     try:
+        # Create and configure node for mockup mode
+        node = LoRaNode(args.config)
+        
+        # Override configuration for mockup mode
+        node.config.sensor.mock_enabled = True
+        node.config.sensor.dht22_enabled = False
+        node.config.sensor.bmp280_enabled = False
+        
+        # Override log level if specified
+        if args.log_level:
+            node.config.logging.log_level = args.log_level
+        
+        # Override sensor interval if specified
+        if args.interval:
+            node.config.sensor.read_interval = args.interval
+        
+        # Disable LoRa if requested
+        if args.no_lora:
+            node.lora_disabled = True
+            print("📡 LoRa transmission disabled")
+        
+        print(f"📊 Sensor interval: {node.config.sensor.read_interval}s")
+        print(f"🔧 Config file: {args.config}")
+        print()
+        
+        # Start the node
         node.start()
+        return 0
+        
+    except Exception as e:
+        print(f"Error in mockup mode: {e}")
+        return 1
+
+def run_test_mode(args):
+    """Run hardware test mode"""
+    try:
+        from test_hardware import main as test_main
+        print("Running hardware tests...")
+        return test_main()
+    except ImportError:
+        print("Error: test_hardware.py not found")
+        return 1
+    except Exception as e:
+        print(f"Error in test mode: {e}")
+        return 1
+
+def run_normal_mode(args):
+    """Run in normal mode"""
+    try:
+        # Create and start LoRa node
+        node = LoRaNode(args.config)
+        
+        # Override log level if specified
+        if args.log_level:
+            node.config.logging.log_level = args.log_level
+        
+        # Override sensor interval if specified
+        if args.interval:
+            node.config.sensor.read_interval = args.interval
+        
+        # Disable LoRa if requested
+        if args.no_lora:
+            node.lora_disabled = True
+            print("📡 LoRa transmission disabled")
+        
+        node.start()
+        return 0
+        
     except Exception as e:
         print(f"Error starting LoRa node: {e}")
         return 1
-    finally:
-        node.stop()
-    
-    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

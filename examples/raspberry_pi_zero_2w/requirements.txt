@@ -33,6 +33,9 @@ colorlog
 pytest
 pytest-cov
 
+# Optional: Additional sensor libraries
+# Adafruit_DHT
+
 # Optional: Advanced sensor support
 # w1thermsensor>=2.0.0  # For DS18B20 temperature sensors
 # gpiozero>=1.6.0       # Alternative GPIO library
