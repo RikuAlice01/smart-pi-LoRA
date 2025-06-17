@@ -3,13 +3,11 @@ LoRa SX126x Gateway Desktop Application
 Main entry point for the application
 """
 
-import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox
 import customtkinter as ctk
 from src.gui.main_window import MainWindow
 from src.core.config import AppConfig
 import sys
-import os
 
 # Set appearance mode and color theme
 ctk.set_appearance_mode("dark")  # Modes: "System" (standard), "Dark", "Light"

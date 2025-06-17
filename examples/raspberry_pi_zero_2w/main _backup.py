@@ -7,13 +7,16 @@ import asyncio
 import signal
 import sys
 import time
+import logging
+from pathlib import Path
 from typing import Optional, Dict, Any
 import argparse
 
 # Import our enhanced modules
 from src.core.config import ConfigManager
 from src.core.device_id import DeviceIDManager
-from src.core.exceptions import ConfigurationError
+from src.core.exceptions import LoRaNodeError, ConfigurationError, HardwareError
+from src.hardware.sx126x_driver import SX126xDriver
 from src.hardware.sensors import SensorManager
 from src.hardware.gpio_manager import get_gpio_manager
 from src.communication.lora_manager import LoRaManager
