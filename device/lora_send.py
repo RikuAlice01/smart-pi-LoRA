@@ -256,7 +256,7 @@ def main():
             else:
                 final_payload = payload
 
-            if send_lora_message_debug(final_payload):
+            if send_lora_message_debug(payload):
                 print("📤 Sent successfully!")
                 retry_unsent_data()
             else:
