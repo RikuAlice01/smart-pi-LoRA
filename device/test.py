@@ -13,14 +13,8 @@ tty.setcbreak(sys.stdin.fileno())
 
 
 class Node:
-    def __init__(self, config: AppConfig):
-        self.config = config
-
-        if self.serial_manager.connect(self.config.serial.port, self.config.serial.baudrate):
-            print(f"Connected to serial port {self.config.serial.port} at {self.config.serial.baudrate} baud.")
-            self.serial_manager.send_data("Hello World" + "\n")
-        else:
-            print(f"Failed to connect to serial port {self.config.serial.port}. Please check the connection.")
+    def __init__(self):
+        config = AppConfig()
 
         # Core components
         self.serial_manager = SerialManager(self.on_serial_data_received)
@@ -28,14 +22,16 @@ class Node:
             method=config.encryption.method,
             key=config.encryption.key
         )
+        if self.serial_manager.connect(config.serial.port, config.serial.baudrate):
+            print(f"Connected to serial port {config.serial.port} at {config.serial.baudrate} baud.")
+            self.serial_manager.send_data("Hello World" + "\n")
+        else:
+            print(f"Failed to connect to serial port {config.serial.port}. Please check the connection.")
 
-def main():
-    config = AppConfig()
-    node = Node(config)
-    node.run()
 
 if __name__ == "__main__":
-    main()
+    node = Node()
+    node.run()
 
     
 
