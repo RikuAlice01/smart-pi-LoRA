@@ -28,6 +28,19 @@ class Node:
         else:
             print(f"Failed to connect to serial port {config.serial.port}. Please check the connection.")
 
+    def on_serial_data_received(self, data: SerialData):
+        """Handle received serial data"""
+        print(f"Received serial data: {data.decoded_data} at {data.timestamp}")
+        try:
+            # Check if data is encrypted
+            if self.encryption_manager.is_encrypted(data.decoded_data):
+                decrypted_data = self.encryption_manager.decrypt(data.decoded_data)
+                print(f"Decrypted data: {decrypted_data}")
+            else:
+                print(f"Plain data: {data.decoded_data}")
+        except Exception as e:
+            print(f"Error processing serial data: {e}")
+            
 
 if __name__ == "__main__":
     node = Node()
