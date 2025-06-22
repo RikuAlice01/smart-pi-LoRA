@@ -29,6 +29,14 @@ class Node:
             key=config.encryption.key
         )
 
+def main():
+    config = AppConfig()
+    node = Node(config)
+    node.run()
+
+if __name__ == "__main__":
+    main()
+
     
 
 
