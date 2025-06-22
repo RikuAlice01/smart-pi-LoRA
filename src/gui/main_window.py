@@ -4,10 +4,7 @@ Main application window
 
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import ttk, messagebox
-import threading
-import json
-from typing import Dict, Any
+from tkinter import messagebox
 from src.core.config import AppConfig
 from src.core.serial_manager import SerialManager, SerialData
 from src.core.encryption import EncryptionManager
@@ -158,6 +155,7 @@ class MainWindow:
     
     def on_serial_data_received(self, data: SerialData):
         """Handle received serial data"""
+        print(f"Received serial data: {data.decoded_data} at {data.timestamp}")
         try:
             # Check if data is encrypted
             if self.config.encryption.enabled and self.encryption_manager.is_encrypted(data.decoded_data):
@@ -171,6 +169,7 @@ class MainWindow:
     
     def on_mock_data_received(self, data: str):
         """Handle mock data"""
+        print(f"Received mock data: {data}")
         import time
         self.data_display_frame.add_data(data, time.time(), mock=True)
     

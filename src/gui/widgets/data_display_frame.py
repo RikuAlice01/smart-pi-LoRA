@@ -142,6 +142,7 @@ class DataDisplayFrame(ctk.CTkFrame):
     
     def add_data(self, data: str, timestamp: float, encrypted: bool = False, mock: bool = False):
         """Add new data to display"""
+        print(f"Adding data: {data} at {timestamp}, encrypted={encrypted}, mock={mock}")
         # Format timestamp
         dt = datetime.fromtimestamp(timestamp)
         time_str = dt.strftime("%H:%M:%S")
