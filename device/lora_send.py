@@ -70,7 +70,7 @@ def send_lora_message(message):
                 bytes([node.offset_freq]) + 
                 message.encode('utf-8'))
         
-        node.send(message.encode('utf-8'))
+        node.send(data)
         return True
     except Exception as e:
         print(f"❌ LoRa send error: {e}")

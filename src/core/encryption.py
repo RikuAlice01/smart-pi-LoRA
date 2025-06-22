@@ -13,7 +13,7 @@ from cryptography.hazmat.backends import default_backend
 class EncryptionManager:
     """Handles data encryption and decryption"""
     
-    def __init__(self, method: str = "XOR", key: str = "default_key"):
+    def __init__(self, method: str = "AES", key: str = "default_key"):
         self.method = method.upper()
         self.key = key
         self._aes_key = None
