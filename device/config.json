@@ -9,7 +9,7 @@
     "sync_word": 18
   },
   "serial": {
-    "port": "COM4",
+    "port": "/dev/ttyS0",
     "baudrate": 9600,
     "timeout": 1.0,
     "bytesize": 8,
