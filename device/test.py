@@ -1,7 +1,7 @@
 import sys
-from src.core.config import AppConfig
-from src.core.serial_manager import SerialManager, SerialData
-from src.core.encryption import EncryptionManager
+from core.config import AppConfig
+from core.serial_manager import SerialManager, SerialData
+from core.encryption import EncryptionManager
 import time
 import select
 import termios

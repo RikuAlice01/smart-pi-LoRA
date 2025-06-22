@@ -5,7 +5,6 @@ Application configuration management
 import json
 import os
 from dataclasses import dataclass, asdict
-from typing import Optional, Dict, Any
 
 @dataclass
 class LoRaConfig:
