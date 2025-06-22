@@ -51,7 +51,6 @@ def backup_payload(payload):
         f.write(payload + "\n")
 
 def send_lora_message(message):
-    """ส่งข้อความผ่าน LoRa ตามรูปแบบของ main.py"""
     try:
         # กำหนดค่าเริ่มต้นสำหรับการส่งแบบ broadcast
         dest_addr = config.getint('lora', 'dest_address', fallback=65535)  # broadcast address
@@ -186,10 +185,10 @@ def main():
                 final_payload = payload
 
             if send_lora_message(final_payload):
-                print(f"📤 Sent successfully!")
+                print("📤 Sent successfully!")
                 retry_unsent_data()
             else:
-                print(f"❌ Send failed")
+                print("❌ Send failed")
                 backup_payload(final_payload)
 
             time.sleep(interval)
