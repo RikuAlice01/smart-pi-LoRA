@@ -61,18 +61,92 @@ def send_lora_message(message):
         
         # สร้าง data packet ตามรูปแบบใน main.py
         # receiving node high/low + freq + own high/low + own freq + payload
-        data = (bytes([dest_addr >> 8]) + 
-                bytes([dest_addr & 0xff]) + 
-                bytes([offset_freq]) + 
-                bytes([node.addr >> 8]) + 
-                bytes([node.addr & 0xff]) + 
-                bytes([node.offset_freq]) + 
-                message.encode('utf-8'))
+        header = bytearray([
+            dest_addr >> 8,           # destination address high byte
+            dest_addr & 0xff,         # destination address low byte  
+            offset_freq,              # destination frequency offset
+            node.addr >> 8,           # source address high byte
+            node.addr & 0xff,         # source address low byte
+            node.offset_freq          # source frequency offset
+        ])
+
+        payload_bytes = message.encode('utf-8')
         
-        node.send(("Hi"+"\n").join(data.decode('utf-8')))
+        full_packet = header + payload_bytes
+        node.ser.write(full_packet)
+        print(f"📤 Sent {len(full_packet)} bytes: header={header.hex()} payload_len={len(payload_bytes)}")
+        
+
         return True
     except Exception as e:
         print(f"❌ LoRa send error: {e}")
+        return False
+
+# Alternative method - ถ้าต้องการใช้ node.send()
+def send_lora_message_alternative(message):
+    try:
+        dest_addr = config.getint('lora', 'dest_address', fallback=65535)
+        dest_freq = config.getint('lora', 'dest_frequency', fallback=868)
+        offset_freq = dest_freq - (850 if dest_freq > 850 else 410)
+        
+        # สร้าง header เป็น bytes
+        header = bytes([
+            dest_addr >> 8,
+            dest_addr & 0xff, 
+            offset_freq,
+            node.addr >> 8,
+            node.addr & 0xff,
+            node.offset_freq
+        ])
+        
+        # รวม header + message เป็น bytes
+        full_data = header + message.encode('utf-8')
+        
+        # ส่งผ่าน node.send() โดยไม่ต้อง decode
+        node.send(full_data)
+        
+        return True
+    except Exception as e:
+        print(f"❌ LoRa send error: {e}")
+        return False
+
+def send_lora_message_debug(message):
+    try:
+        dest_addr = config.getint('lora', 'dest_address', fallback=65535)
+        dest_freq = config.getint('lora', 'dest_frequency', fallback=868)
+        offset_freq = dest_freq - (850 if dest_freq > 850 else 410)
+        
+        print(f"🔧 Debug - Dest: {dest_addr}, Freq: {dest_freq}, Offset: {offset_freq}")
+        print(f"🔧 Debug - Source: {node.addr}, Source Offset: {node.offset_freq}")
+        
+        # สร้าง header
+        header = bytes([
+            dest_addr >> 8,
+            dest_addr & 0xff, 
+            offset_freq,
+            node.addr >> 8,
+            node.addr & 0xff,
+            node.offset_freq
+        ])
+        
+        payload_bytes = message.encode('utf-8')
+        full_packet = header + payload_bytes
+        
+        # Debug output
+        print(f"🔧 Header hex: {header.hex()}")
+        print(f"🔧 Payload: {message}")
+        print(f"🔧 Payload hex: {payload_bytes.hex()}")
+        print(f"🔧 Full packet hex: {full_packet.hex()}")
+        print(f"🔧 Full packet length: {len(full_packet)} bytes")
+        
+        # ส่งข้อมูล
+        node.send(full_packet)
+        
+        return True
+    except Exception as e:
+        print(f"❌ LoRa send error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def retry_unsent_data():
@@ -169,9 +243,7 @@ def main():
                 "humidity": hum,
                 "pressure": pressure,
                 "battery": battery,
-                "rssi": mock_rssi,
-                "encrypted": enable_encryption,
-                "mock": True
+                "rssi": mock_rssi
             }
             
             payload = json.dumps(data, separators=(',', ':'))  # compact JSON
@@ -184,7 +256,7 @@ def main():
             else:
                 final_payload = payload
 
-            if send_lora_message(final_payload):
+            if send_lora_message_debug(final_payload):
                 print("📤 Sent successfully!")
                 retry_unsent_data()
             else:
