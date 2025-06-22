@@ -148,14 +148,36 @@ class DataDisplayFrame(ctk.CTkFrame):
         time_str = dt.strftime("%H:%M:%S")
         
         # Add to raw data display
-        prefix = "[ENCRYPTED]" if encrypted else "[MOCK]" if mock else ""
-        raw_line = f"[{time_str}] {prefix} {data}\n"
+        prefix = "[ENCRYPTED]" if encrypted else "[MOCK]" if mock else "[RAW]"
+        print(f"Data prefix: {prefix}")
+
+        if prefix == "[RAW]":
+            data = data.strip()
+            clean_data = (data.replace('\r', '')
+                            .replace('\t', ' ')
+                            .replace('\x00', '')
+                            .replace('\x12\x12', '')
+                            .strip())
+            print(f"Clean data: {clean_data}")
+            print(f"Clean data repr: {repr(clean_data)}")
+        else:
+            clean_data = data.strip()
+        # สร้าง raw line
+        raw_line = f"[{time_str}] {prefix} {clean_data}\n"
+
+        print(f"Raw line: {raw_line}")
+        print(f"Raw line repr: {repr(raw_line)}")
+
+        # แทรกใน Text widget
         self.raw_text.insert("end", raw_line)
         self.raw_text.see("end")
+
+        # เพิ่มการ flush เพื่อให้แน่ใจว่าข้อมูลแสดงทันที  
+        self.raw_text.update_idletasks()
         
         # Try to parse as JSON for structured display
         try:
-            parsed_data = json.loads(data)
+            parsed_data = json.loads(clean_data)
             if self.is_sensor_data(parsed_data):
                 self.add_parsed_data(parsed_data, time_str)
                 
@@ -163,6 +185,7 @@ class DataDisplayFrame(ctk.CTkFrame):
                 parsed_data['timestamp'] = timestamp
                 parsed_data['encrypted'] = encrypted
                 parsed_data['mock'] = mock
+                parsed_data['raw'] = "[RAW]"
                 self.data_history.append(parsed_data)
                 
                 # Limit history size

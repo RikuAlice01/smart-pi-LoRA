@@ -155,14 +155,15 @@ class MainWindow:
     
     def on_serial_data_received(self, data: SerialData):
         """Handle received serial data"""
-        print(f"Received serial data: {data.decoded_data} at {data.timestamp}")
+        print(f"Received serial data: {data.decoded_data}")
         try:
             # Check if data is encrypted
             if self.config.encryption.enabled and self.encryption_manager.is_encrypted(data.decoded_data):
                 decrypted_data = self.encryption_manager.decrypt(data.decoded_data)
                 self.data_display_frame.add_data(decrypted_data, data.timestamp, encrypted=True)
             else:
-                self.data_display_frame.add_data(data.decoded_data, data.timestamp)
+                print("###### NON-ENCRYPTED DATA ######")
+                self.data_display_frame.add_data(data.decoded_data.strip(), data.timestamp)
                 
         except Exception as e:
             print(f"Error processing serial data: {e}")

@@ -252,7 +252,7 @@ def main():
             # เข้ารหัสถ้าเปิดใช้งาน
             if enable_encryption:
                 final_payload = encrypt_payload(payload)
-                print(f"🔐 Encrypted length: {len(final_payload)} bytes")
+                # print(f"🔐 Encrypted length: {len(final_payload)} bytes")
             else:
                 final_payload = payload
 
