@@ -9,7 +9,38 @@ import base64
 import secrets
 import json
 import random
-from encryption import _aes_encrypt, _aes_decrypt 
+from core.encryption import EncryptionManager
+
+KEYFILE = 'keyfile.bin'
+
+def load_key():
+    if not os.path.exists(KEYFILE):
+        raise FileNotFoundError(f"Key file '{KEYFILE}' not found.")
+    with open(KEYFILE, 'rb') as f:
+        key = f.read()
+        if len(key) != 32:
+            raise ValueError("Key length must be exactly 32 bytes (256 bits).")
+        return key
+
+EN_KEY = base64.b64encode(load_key()).decode('utf-8')
+
+print(f"🔑 Loaded encryption key: {EN_KEY}")
+em = EncryptionManager(method="AES", key=EN_KEY)
+
+# original_data = '{"device_id":"node_E87F29","timestamp":1751868377.785197,"temperature":35.7,"humidity":79.37,"pressure":1010.13,"battery":21.42,"rssi":-85}'
+# print(f"📝 ข้อมูลต้นฉบับ: {original_data}")
+
+# # เข้ารหัส
+# encrypted = em.encrypt(original_data)
+# print(f"🔐 ข้อมูลที่เข้ารหัส: {encrypted}")
+        
+# # ตรวจสอบว่าข้อมูลถูกเข้ารหัสหรือไม่
+# is_encrypted = em.is_encrypted(encrypted)
+# print(f"✅ ข้อมูลถูกเข้ารหัส: {is_encrypted}")
+        
+# # ถอดรหัส
+# decrypted = em.decrypt(encrypted)
+# print(f"🔓 ข้อมูลที่ถอดรหัส: {decrypted}")
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -69,33 +100,33 @@ def send_lora_message(message):
         print(f"❌ LoRa send error: {e}")
         return False
 
-# Alternative method - ถ้าต้องการใช้ node.send()
-def send_lora_message_alternative(message):
-    try:
-        dest_addr = config.getint('lora', 'dest_address', fallback=65535)
-        dest_freq = config.getint('lora', 'dest_frequency', fallback=868)
-        offset_freq = dest_freq - (850 if dest_freq > 850 else 410)
+# # Alternative method - ถ้าต้องการใช้ node.send()
+# def send_lora_message_alternative(message):
+#     try:
+#         dest_addr = config.getint('lora', 'dest_address', fallback=65535)
+#         dest_freq = config.getint('lora', 'dest_frequency', fallback=868)
+#         offset_freq = dest_freq - (850 if dest_freq > 850 else 410)
         
-        # สร้าง header เป็น bytes
-        header = bytes([
-            dest_addr >> 8,
-            dest_addr & 0xff, 
-            offset_freq,
-            node.addr >> 8,
-            node.addr & 0xff,
-            node.offset_freq
-        ])
+#         # สร้าง header เป็น bytes
+#         header = bytes([
+#             dest_addr >> 8,
+#             dest_addr & 0xff, 
+#             offset_freq,
+#             node.addr >> 8,
+#             node.addr & 0xff,
+#             node.offset_freq
+#         ])
         
-        # รวม header + message เป็น bytes
-        full_data = header + message.encode('utf-8')
+#         # รวม header + message เป็น bytes
+#         full_data = header + message.encode('utf-8')
         
-        # ส่งผ่าน node.send() โดยไม่ต้อง decode
-        node.send(full_data)
+#         # ส่งผ่าน node.send() โดยไม่ต้อง decode
+#         node.send(full_data)
         
-        return True
-    except Exception as e:
-        print(f"❌ LoRa send error: {e}")
-        return False
+#         return True
+#     except Exception as e:
+#         print(f"❌ LoRa send error: {e}")
+#         return False
 
 def send_lora_message_debug(message):
     try:
@@ -217,15 +248,17 @@ def main():
             
             # เข้ารหัสถ้าเปิดใช้งาน
             if enable_encryption:
-                final_payload = _aes_encrypt(payload)
+                final_payload = em.encrypt(payload)
                 print(f"🔐 Encrypted length: {len(final_payload)} bytes")
                 
             else:
                 final_payload = payload
 
             print(f"📦 Final payload: {final_payload[:50]}")
-            final_payload = _aes_decrypt(payload)
+            
+            final_payload = em.decrypt(final_payload)
             print(f"🔓 Decrypted payload: {final_payload[:50]}")
+            
             
             # if send_lora_message(final_payload):
             #     print("📤 Sent successfully!")
