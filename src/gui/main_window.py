@@ -14,6 +14,19 @@ from src.gui.widgets.lora_config_frame import LoRaConfigFrame
 from src.gui.widgets.data_display_frame import DataDisplayFrame
 from src.gui.widgets.control_frame import ControlFrame
 
+KEYFILE = 'keyfile.bin'
+
+def load_key():
+    if not os.path.exists(KEYFILE):
+        raise FileNotFoundError(f"Key file '{KEYFILE}' not found.")
+    with open(KEYFILE, 'rb') as f:
+        key = f.read()
+        if len(key) != 32:
+            raise ValueError("Key length must be exactly 32 bytes (256 bits).")
+        return key
+
+EN_KEY = base64.b64encode(load_key()).decode('utf-8')
+
 class MainWindow:
     """Main application window"""
     
@@ -26,7 +39,7 @@ class MainWindow:
         self.serial_manager = SerialManager(self.on_serial_data_received)
         self.encryption_manager = EncryptionManager(
             method=config.encryption.method,
-            key=config.encryption.key
+            key=EN_KEY
         )
         self.mock_generator = MockDataGenerator(self.on_mock_data_received)
         

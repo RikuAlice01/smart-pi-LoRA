@@ -24,7 +24,6 @@ def load_key():
 
 EN_KEY = base64.b64encode(load_key()).decode('utf-8')
 
-print(f"🔑 Loaded encryption key: {EN_KEY}")
 em = EncryptionManager(method="AES", key=EN_KEY)
 
 # # เข้ารหัส

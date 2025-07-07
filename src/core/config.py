@@ -32,8 +32,7 @@ class SerialConfig:
 class EncryptionConfig:
     """Encryption configuration"""
     enabled: bool = False
-    method: str = "XOR"  # XOR, AES
-    key: str = "default_key_123456"
+    method: str = "AES"  # XOR, AES
 
 class AppConfig:
     """Main application configuration"""
