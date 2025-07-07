@@ -183,7 +183,8 @@ def main():
             }
             
             payload = json.dumps(data, separators=(',', ':'))  # compact JSON
-            print(f"📊 Data: {payload}")
+            if debug:
+                print(f"📊 Data: {payload}")
             
             # เข้ารหัสถ้าเปิดใช้งาน
             if enable_encryption:
