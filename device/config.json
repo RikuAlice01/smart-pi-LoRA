@@ -18,7 +18,6 @@
   },
   "encryption": {
     "enabled": false,
-    "method": "AES",
-    "key": "default_key_123456"
+    "method": "AES"
   }
 }
