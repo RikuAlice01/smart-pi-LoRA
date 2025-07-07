@@ -13,6 +13,8 @@ from src.gui.widgets.connection_frame import ConnectionFrame
 from src.gui.widgets.lora_config_frame import LoRaConfigFrame
 from src.gui.widgets.data_display_frame import DataDisplayFrame
 from src.gui.widgets.control_frame import ControlFrame
+import base64
+import os
 
 KEYFILE = 'keyfile.bin'
 
