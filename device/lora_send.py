@@ -254,10 +254,10 @@ def main():
             else:
                 final_payload = payload
 
-            print(f"📦 Final payload: {final_payload[:50]}")
+            print(f"📦 Final payload: {final_payload}")
             
             final_payload = em.decrypt(final_payload)
-            print(f"🔓 Decrypted payload: {final_payload[:50]}")
+            print(f"🔓 Decrypted payload: {final_payload}")
             
             
             # if send_lora_message(final_payload):
