@@ -18,6 +18,9 @@ KEYFILE = 'keyfile.bin'
 config = configparser.ConfigParser()
 config.read('config.ini')
 
+method = config.getint('encryption', 'method', fallback="AES")
+debug = config.getboolean('debug', 'enabled', fallback=False)
+
 def load_key():
     if not os.path.exists(KEYFILE):
         raise FileNotFoundError(f"Key file '{KEYFILE}' not found.")
@@ -28,7 +31,6 @@ def load_key():
         return key
 
 EN_KEY = base64.b64encode(load_key()).decode('utf-8')
-method = config.getint('send', 'method', fallback="AES")
 em = EncryptionManager(method=method, key=EN_KEY)
 
 # # เข้ารหัส
@@ -116,7 +118,8 @@ def retry_unsent_data():
         try:
             encrypted = line.strip()
             if send_lora_message(encrypted):
-                print(f"📤 Retried: {encrypted[:50]}...")
+                if debug:
+                    print(f"📤 Retried: {encrypted[:50]}...")
                 success_lines.append(line)
                 time.sleep(0.5)
             else:
@@ -161,7 +164,7 @@ def main():
     time.sleep(1)
 
     interval = config.getint('send', 'interval', fallback=10)
-    enable_encryption = config.getboolean('send', 'enable_encryption', fallback=True)
+    enable_encryption = config.getboolean('encryption', 'enable_encryption', fallback=True)
     mock_rssi = config.getint('send', 'mock_rssi', fallback=-85)
 
     while True:

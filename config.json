@@ -17,7 +17,7 @@
     "stopbits": 1
   },
   "encryption": {
-    "enabled": false,
+    "enabled": true,
     "method": "AES"
   }
 }
