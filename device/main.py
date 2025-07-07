@@ -18,6 +18,7 @@ KEYFILE = 'keyfile.bin'
 config = configparser.ConfigParser()
 config.read('config.ini')
 
+method = config.getint('encryption', 'method', fallback="AES")
 debug = config.getboolean('debug', 'enabled', fallback=False)
 
 def load_key():
@@ -30,7 +31,7 @@ def load_key():
         return key
 
 EN_KEY = base64.b64encode(load_key()).decode('utf-8')
-em = EncryptionManager(method="AES", key=EN_KEY)
+em = EncryptionManager(method=method, key=EN_KEY)
 
 # # เข้ารหัส
 # encrypted = em.encrypt(original_data)
@@ -50,7 +51,7 @@ device_id = get_device_id()
 
 # สร้าง LoRa node object ตามแบบใน main.py
 node = sx126x.sx126x(
-    serial_num="/dev/ttyS0",
+    serial_num=config.get('lora', 'serial_port', fallback='/dev/ttyS0'),
     freq=config.getint('lora', 'frequency', fallback=868),
     addr=config.getint('lora', 'address', fallback=0),
     power=config.getint('lora', 'tx_power', fallback=22),
