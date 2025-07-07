@@ -1,3 +1,5 @@
+# device/main.py
+
 import sx126x
 import time
 import uuid
@@ -13,6 +15,9 @@ from core.encryption import EncryptionManager
 
 KEYFILE = 'keyfile.bin'
 
+config = configparser.ConfigParser()
+config.read('config.ini')
+
 def load_key():
     if not os.path.exists(KEYFILE):
         raise FileNotFoundError(f"Key file '{KEYFILE}' not found.")
@@ -23,8 +28,8 @@ def load_key():
         return key
 
 EN_KEY = base64.b64encode(load_key()).decode('utf-8')
-
-em = EncryptionManager(method="AES", key=EN_KEY)
+method = config.getint('send', 'method', fallback="AES")
+em = EncryptionManager(method=method, key=EN_KEY)
 
 # # เข้ารหัส
 # encrypted = em.encrypt(original_data)
@@ -35,9 +40,6 @@ em = EncryptionManager(method="AES", key=EN_KEY)
 # # ถอดรหัส
 # decrypted = em.decrypt(encrypted)
 
-config = configparser.ConfigParser()
-config.read('config.ini')
-
 def get_device_id():
     mac = hex(uuid.getnode())[2:].upper().zfill(12)
     prefix = config.get('device', 'id_prefix', fallback='node_')
@@ -47,7 +49,7 @@ device_id = get_device_id()
 
 # สร้าง LoRa node object ตามแบบใน main.py
 node = sx126x.sx126x(
-    serial_num="/dev/ttyS0",
+    serial_num=config.get('lora', 'serial_port', fallback='/dev/ttyS0'),
     freq=config.getint('lora', 'frequency', fallback=868),
     addr=config.getint('lora', 'address', fallback=0),
     power=config.getint('lora', 'tx_power', fallback=22),
