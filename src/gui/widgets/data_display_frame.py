@@ -164,7 +164,11 @@ class DataDisplayFrame(ctk.CTkFrame):
             clean_data = data.strip()
         # สร้าง raw line
         raw_line = f"[{time_str}] {prefix} {clean_data}\n"
-
+        
+        if encrypted:
+            readline = self.encryption_manager.decrypt(clean_data)
+            raw_line = f"[{time_str}] [DECRYPTED] {readline}\n"
+            
         print(f"Raw line: {raw_line}")
         print(f"Raw line repr: {repr(raw_line)}")
 
