@@ -9,22 +9,10 @@ import base64
 import secrets
 import json
 import random
+from encryption import _aes_encrypt, _aes_decrypt 
 
 config = configparser.ConfigParser()
 config.read('config.ini')
-
-KEYFILE = 'keyfile.bin'
-
-def load_key():
-    if not os.path.exists(KEYFILE):
-        raise FileNotFoundError(f"Key file '{KEYFILE}' not found.")
-    with open(KEYFILE, 'rb') as f:
-        key = f.read()
-        if len(key) != 32:
-            raise ValueError("Key length must be exactly 32 bytes (256 bits).")
-        return key
-
-AES_KEY = load_key()
 
 def get_device_id():
     mac = hex(uuid.getnode())[2:].upper().zfill(12)
@@ -178,27 +166,6 @@ def retry_unsent_data():
                 if line not in success_lines:
                     f.write(line)
 
-def encrypt_payload(plain_text: str) -> str:
-    start_time = time.perf_counter()
-
-    backend = default_backend()
-    iv = secrets.token_bytes(16)  # สุ่ม IV 16 bytes
-    cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=backend)
-    encryptor = cipher.encryptor()
-
-    # PKCS#7 padding แบบง่าย
-    raw = plain_text.encode('utf-8')
-    pad_len = 16 - (len(raw) % 16)
-    padded_data = raw + bytes([pad_len] * pad_len)
-
-    encrypted = encryptor.update(padded_data) + encryptor.finalize()
-    encoded = base64.b64encode(iv + encrypted).decode('utf-8')
-
-    end_time = time.perf_counter()
-    elapsed = end_time - start_time
-    print(f"⏱️ Encryption time: {elapsed:.6f} seconds")
-
-    return encoded
 
 def generate_sensor_data():
     """สร้างข้อมูลเซ็นเซอร์แบบ mock หรือจากค่าจริง"""
@@ -250,17 +217,22 @@ def main():
             
             # เข้ารหัสถ้าเปิดใช้งาน
             if enable_encryption:
-                final_payload = encrypt_payload(payload)
-                # print(f"🔐 Encrypted length: {len(final_payload)} bytes")
+                final_payload = _aes_encrypt(payload)
+                print(f"🔐 Encrypted length: {len(final_payload)} bytes")
+                
             else:
                 final_payload = payload
 
-            if send_lora_message(final_payload):
-                print("📤 Sent successfully!")
-                retry_unsent_data()
-            else:
-                print("❌ Send failed")
-                backup_payload(final_payload)
+            print(f"📦 Final payload: {final_payload[:50]}")
+            final_payload = _aes_decrypt(payload)
+            print(f"🔓 Decrypted payload: {final_payload[:50]}")
+            
+            # if send_lora_message(final_payload):
+            #     print("📤 Sent successfully!")
+            #     retry_unsent_data()
+            # else:
+            #     print("❌ Send failed")
+            #     backup_payload(final_payload)
 
             time.sleep(interval)
             

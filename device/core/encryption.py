@@ -10,6 +10,19 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 
+KEYFILE = 'keyfile.bin'
+
+def load_key():
+    if not os.path.exists(KEYFILE):
+        raise FileNotFoundError(f"Key file '{KEYFILE}' not found.")
+    with open(KEYFILE, 'rb') as f:
+        key = f.read()
+        if len(key) != 32:
+            raise ValueError("Key length must be exactly 32 bytes (256 bits).")
+        return key
+
+AES_KEY = load_key()
+
 class EncryptionManager:
     """Handles data encryption and decryption"""
     
@@ -73,32 +86,25 @@ class EncryptionManager:
         except:
             return encrypted_data
     
-    def _aes_encrypt(self, data: str) -> str:
-        """AES encryption using CBC mode"""
-        try:
-            if not self._aes_key:
-                self._prepare_aes_key()
-            
-            # Generate random IV
-            iv = os.urandom(16)
-            
-            # Pad the data
-            padder = padding.PKCS7(128).padder()
-            padded_data = padder.update(data.encode('utf-8'))
-            padded_data += padder.finalize()
-            
-            # Encrypt
-            cipher = Cipher(algorithms.AES(self._aes_key), modes.CBC(iv), backend=default_backend())
-            encryptor = cipher.encryptor()
-            encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
-            
-            # Combine IV and encrypted data, then base64 encode
-            combined = iv + encrypted_data
-            return base64.b64encode(combined).decode('utf-8')
-            
-        except Exception as e:
-            print(f"AES encryption error: {e}")
-            return data
+    def _aes_encrypt(self, plain_text: str) -> str:
+        start_time = time.perf_counter()
+        backend = default_backend()
+        iv = secrets.token_bytes(16)  # สุ่ม IV 16 bytes
+        cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=backend)
+        encryptor = cipher.encryptor()
+
+        # PKCS#7 padding แบบง่าย
+        raw = plain_text.encode('utf-8')
+        pad_len = 16 - (len(raw) % 16)
+        padded_data = raw + bytes([pad_len] * pad_len)
+
+        encrypted = encryptor.update(padded_data) + encryptor.finalize()
+        encoded = base64.b64encode(iv + encrypted).decode('utf-8')
+
+        end_time = time.perf_counter()
+        elapsed = end_time - start_time
+        print(f"⏱️ Encryption time: {elapsed:.6f} seconds")
+        return encoded
     
     def _aes_decrypt(self, encrypted_data: str) -> str:
         """AES decryption using CBC mode"""
