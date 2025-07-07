@@ -71,12 +71,11 @@ def send_lora_message(message):
         ])
 
         payload_bytes = message.encode('utf-8')
-        
         full_packet = header + payload_bytes
-        node.ser.write(full_packet)
+        
+        node.send(full_packet)
         print(f"📤 Sent {len(full_packet)} bytes: header={header.hex()} payload_len={len(payload_bytes)}")
         
-
         return True
     except Exception as e:
         print(f"❌ LoRa send error: {e}")
@@ -256,7 +255,7 @@ def main():
             else:
                 final_payload = payload
 
-            if send_lora_message_debug(payload):
+            if send_lora_message(final_payload):
                 print("📤 Sent successfully!")
                 retry_unsent_data()
             else:
