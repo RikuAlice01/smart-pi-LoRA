@@ -177,8 +177,14 @@ class MainWindow:
                 decrypted_data = self.encryption_manager.decrypt(data.decoded_data)
                 self.data_display_frame.add_data(decrypted_data, data.timestamp, encrypted=True)
             else:
-                print("###### NON-ENCRYPTED DATA ######")
-                self.data_display_frame.add_data(data.decoded_data.strip(), data.timestamp)
+                if "[EN]" in data.decoded_data:
+                    # If data is marked as encrypted but not actually encrypted, treat it as raw
+                    data.decoded_data = data.decoded_data.replace("[EN]", "")
+                    decrypted_data = self.encryption_manager.decrypt(data.decoded_data)
+                    self.data_display_frame.add_data(decrypted_data, data.timestamp, encrypted=True)
+                else:
+                    print("###### NON-ENCRYPTED DATA ######")
+                    self.data_display_frame.add_data(data.decoded_data.strip(), data.timestamp)
                 
         except Exception as e:
             print(f"Error processing serial data: {e}")

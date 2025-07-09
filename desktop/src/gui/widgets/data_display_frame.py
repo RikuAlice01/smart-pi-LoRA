@@ -151,17 +151,14 @@ class DataDisplayFrame(ctk.CTkFrame):
         prefix = "[ENCRYPTED]" if encrypted else "[MOCK]" if mock else "[RAW]"
         print(f"Data prefix: {prefix}")
 
-        if prefix == "[RAW]":
-            data = data.strip()
-            clean_data = (data.replace('\r', '')
+        data = data.strip()
+        clean_data = (data.replace('\r', '')
                             .replace('\t', ' ')
                             .replace('\x00', '')
                             .replace('\x12\x12', '')
                             .strip())
-            print(f"Clean data: {clean_data}")
-            print(f"Clean data repr: {repr(clean_data)}")
-        else:
-            clean_data = data.strip()
+        print(f"Clean data: {clean_data}")
+        print(f"Clean data repr: {repr(clean_data)}")
         # สร้าง raw line
         raw_line = f"[{time_str}] {prefix} {clean_data}\n"
             
