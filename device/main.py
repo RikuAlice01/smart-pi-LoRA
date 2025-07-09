@@ -162,7 +162,7 @@ def main():
             
             # เข้ารหัสถ้าเปิดใช้งาน
             if enable_encryption:
-                final_payload = "[EN]"+em.encrypt(payload)
+                final_payload = em.encrypt(payload)
                 print(f"🔐 Encrypted length: {len(final_payload)} bytes")
                 
                 decrypted_payload = em.decrypt(final_payload)
@@ -173,7 +173,7 @@ def main():
             else:
                 final_payload = payload
                 
-            if send_lora_message(final_payload):
+            if send_lora_message("[EN]"+final_payload):
                 print("📤 Sent successfully!")
                 retry_unsent_data()
             else:
