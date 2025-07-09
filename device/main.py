@@ -174,7 +174,7 @@ def main():
             
             # เข้ารหัสถ้าเปิดใช้งาน
             if enable_encryption:
-                final_payload = em.encrypt(payload)
+                final_payload = "[EN]"+em.encrypt(payload)
                 print(f"🔐 Encrypted length: {len(final_payload)} bytes")
                 
             else:

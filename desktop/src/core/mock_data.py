@@ -7,81 +7,84 @@ import time
 import json
 import threading
 from typing import Callable, Optional
-from dataclasses import dataclass
-
-@dataclass
-class SensorReading:
-    """Represents a sensor reading"""
-    device_id: str
-    timestamp: float
-    temperature: float
-    humidity: float
-    pressure: float
-    battery_level: float
-    signal_strength: int
 
 class MockDataGenerator:
     """Generates mock sensor data for development"""
-    
+
     def __init__(self, data_callback: Optional[Callable] = None):
         self.data_callback = data_callback
         self.is_running = False
         self.thread: Optional[threading.Thread] = None
-        self.devices = ["DEV001", "DEV002", "DEV003", "DEV004"]
-        
+        self.devices = ["sensor_001", "sensor_002", "sensor_003"]
+
     def start(self, interval: float = 5.0):
         """Start generating mock data"""
         if not self.is_running:
             self.is_running = True
             self.thread = threading.Thread(
-                target=self._generate_loop, 
-                args=(interval,), 
+                target=self._generate_loop,
+                args=(interval,),
                 daemon=True
             )
             self.thread.start()
-    
+
     def stop(self):
         """Stop generating mock data"""
         self.is_running = False
         if self.thread:
             self.thread.join(timeout=2.0)
-    
+
     def _generate_loop(self, interval: float):
         """Main data generation loop"""
         while self.is_running:
             try:
-                # Generate data for a random device
                 device_id = random.choice(self.devices)
-                reading = self._generate_sensor_reading(device_id)
+                mock_data = self._generate_mock_data(device_id)
                 
-                # Convert to JSON string (simulating serial data)
-                data_json = json.dumps({
-                    "device_id": reading.device_id,
-                    "timestamp": reading.timestamp,
-                    "temperature": reading.temperature,
-                    "humidity": reading.humidity,
-                    "pressure": reading.pressure,
-                    "battery": reading.battery_level,
-                    "rssi": reading.signal_strength
-                })
+                data_json = json.dumps(mock_data)
                 
                 if self.data_callback:
                     self.data_callback(data_json)
                 
-                time.sleep(interval + random.uniform(-1, 1))  # Add some randomness
-                
+                time.sleep(interval + random.uniform(-1, 1))
+
             except Exception as e:
                 print(f"Error generating mock data: {e}")
                 break
-    
-    def _generate_sensor_reading(self, device_id: str) -> SensorReading:
-        """Generate a single sensor reading"""
-        return SensorReading(
-            device_id=device_id,
-            timestamp=time.time(),
-            temperature=random.uniform(18.0, 35.0),  # Celsius
-            humidity=random.uniform(30.0, 80.0),     # Percentage
-            pressure=random.uniform(980.0, 1020.0),  # hPa
-            battery_level=random.uniform(20.0, 100.0), # Percentage
-            signal_strength=random.randint(-120, -60)   # dBm
-        )
+
+    def _generate_mock_data(self, device_id: str) -> dict:
+        """Generate a single mock data payload"""
+        return {
+            "timestamp": time.time(),
+            "sensor_readings": {
+                "pH": round(random.uniform(6.5, 8.5), 2),
+                "EC": random.randint(600, 1200),
+                "TDS": random.randint(300, 600),
+                "Salinity": round(random.uniform(0.1, 0.6), 2),
+                "DO": round(random.uniform(5.0, 9.0), 2),
+                "saturation": round(random.uniform(70.0, 100.0), 1)
+            },
+            "location": {
+                "device_id": device_id,
+                "site": None,
+                "battery": None,
+                "rssi": None,
+                "coordinates": {
+                    "lat": None,
+                    "lon": None
+                }
+            }
+        }
+
+# ทดสอบใช้งาน
+if __name__ == "__main__":
+    def print_callback(data):
+        print(json.dumps(json.loads(data), indent=2))
+
+    mocker = MockDataGenerator(data_callback=print_callback)
+    mocker.start(interval=2.0)
+
+    try:
+        time.sleep(10)  # รัน 10 วินาที
+    finally:
+        mocker.stop()

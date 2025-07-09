@@ -97,13 +97,13 @@ class DataDisplayFrame(ctk.CTkFrame):
         tree_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         
         # Create Treeview
-        columns = ("Time", "Device", "Temperature", "Humidity", "Pressure", "Battery", "RSSI")
+        columns = ("Time", "Device", "pH", "EC(µS/cm)", "TDS(ppm)", "Salinity(ppt)", "DO(mg/L)", "Sat(%)", "Battery(%)", "RSSI(dBm)")
         self.data_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=15)
         
         # Configure columns
         for col in columns:
             self.data_tree.heading(col, text=col)
-            self.data_tree.column(col, width=100, anchor="center")
+            self.data_tree.column(col, width=80, anchor="center")
         
         # Scrollbars
         v_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.data_tree.yview)
@@ -198,24 +198,33 @@ class DataDisplayFrame(ctk.CTkFrame):
     
     def is_sensor_data(self, data: Dict[str, Any]) -> bool:
         """Check if data contains sensor information"""
-        required_fields = ["device_id", "temperature", "humidity"]
-        return all(field in data for field in required_fields)
-    
+        return (
+            isinstance(data.get("sensor_readings"), dict) and
+            isinstance(data.get("location"), dict) and
+            "device_id" in data["location"]
+        )
+            
     def add_parsed_data(self, data: Dict[str, Any], time_str: str):
         """Add parsed sensor data to tree view"""
+        readings = data.get("sensor_readings", {})
+        location = data.get("location", {})
+
         values = (
             time_str,
-            data.get("device_id", "Unknown"),
-            f"{data.get('temperature', 0):.1f}°C",
-            f"{data.get('humidity', 0):.1f}%",
-            f"{data.get('pressure', 0):.1f} hPa",
-            f"{data.get('battery', 0):.1f}%",
-            f"{data.get('rssi', 0)} dBm"
+            location.get("device_id", "Unknown"),
+            f"{readings.get('ph', 0):.1f}",
+            f"{readings.get('ec', 0):.1f}",
+            f"{readings.get('tds', 0):.1f}",
+            f"{readings.get('salinity', 0):.1f}",
+            f"{readings.get('do', 0):.1f}",
+            f"{readings.get('saturation', 0):.1f}",
+            f"{readings.get('battery', 0)}",
+            f"{readings.get('rssi', 0):.1f}",
         )
-        
+
         self.data_tree.insert("", "end", values=values)
-        
-        # Auto-scroll to bottom
+
+        # Auto-scroll
         children = self.data_tree.get_children()
         if children:
             self.data_tree.see(children[-1])
