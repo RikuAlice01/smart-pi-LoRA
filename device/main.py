@@ -32,15 +32,6 @@ def load_key():
 EN_KEY = base64.b64encode(load_key()).decode('utf-8')
 em = EncryptionManager(method="AES", key=EN_KEY)
 
-# # เข้ารหัส
-# encrypted = em.encrypt(original_data)
-        
-# # ตรวจสอบว่าข้อมูลถูกเข้ารหัสหรือไม่
-# is_encrypted = em.is_encrypted(encrypted)
-        
-# # ถอดรหัส
-# decrypted = em.decrypt(encrypted)
-
 def get_device_id():
     mac = hex(uuid.getnode())[2:].upper().zfill(12)
     prefix = config.get('device', 'id_prefix', fallback='node_')
@@ -137,23 +128,29 @@ def retry_unsent_data():
                     f.write(line)
 
 
-def generate_sensor_data():
-    """สร้างข้อมูลเซ็นเซอร์แบบ mock หรือจากค่าจริง"""
-    # ใช้ค่าจาก config หรือสุ่มค่าใหม่
-    use_random = config.getboolean('send', 'use_random', fallback=False)
-    
-    if use_random:
-        temp = round(random.uniform(20.0, 40.0), 2)
-        hum = round(random.uniform(30.0, 90.0), 2)
-        pressure = round(random.uniform(980.0, 1020.0), 2)
-        battery = round(random.uniform(10.0, 100.0), 2)
-    else:
-        temp = config.getfloat('send', 'mock_temp', fallback=25.5)
-        hum = config.getfloat('send', 'mock_hum', fallback=60.0)
-        pressure = config.getfloat('send', 'mock_pressure', fallback=1013.25)
-        battery = config.getfloat('send', 'mock_battery', fallback=85.0)
-    
-    return temp, hum, pressure, battery
+def generate_mock_sensor_data():
+    data = {
+        "timestamp": time.time(),
+        "sensor_readings": {
+            "ph": round(random.uniform(6.5, 8.5), 2),
+            "ec": random.randint(600, 1200),          # µS/cm
+            "tds": random.randint(300, 600),          # ppm
+            "salinity": round(random.uniform(0.1, 0.6), 2),  # ppt
+            "do": round(random.uniform(5.0, 9.0), 2),        # mg/L
+            "saturation": round(random.uniform(70.0, 100.0), 1)  # %
+        },
+        "location": {
+            "device_id": device_id,
+            "site": None,
+            "battery": None,
+            "rssi": None,
+            "coordinates": {
+                "lat": None,
+                "lon": None
+            }
+        }
+    }
+    return data
 
 def main():
     print(f"🚀 Starting LoRa Node - Device ID: {device_id}")
@@ -169,19 +166,8 @@ def main():
     while True:
         try:
             # สร้างข้อมูลเซ็นเซอร์
-            temp, hum, pressure, battery = generate_sensor_data()
-            
-            # สร้าง JSON payload
-            data = {
-                "device_id": device_id,
-                "timestamp": time.time(),
-                "temperature": temp,
-                "humidity": hum,
-                "pressure": pressure,
-                "battery": battery,
-                "rssi": mock_rssi
-            }
-            
+            data = generate_mock_sensor_data()
+                        
             payload = json.dumps(data, separators=(',', ':'))  # compact JSON
             if debug:
                 print(f"📊 Data: {payload}")

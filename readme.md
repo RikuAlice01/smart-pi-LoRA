@@ -66,13 +66,25 @@ The application expects JSON-formatted sensor data:
 
 \`\`\`json
 {
-  "device_id": "DEV001",
-  "timestamp": 1640995200.0,
-  "temperature": 23.5,
-  "humidity": 65.2,
-  "pressure": 1013.25,
-  "battery": 85.0,
-  "rssi": -75
+  "timestamp": 1752037883.8479893,
+  "sensor_readings": {
+    "pH": 7.3,
+    "EC": 820,
+    "TDS": 410,
+    "Salinity": 0.42,
+    "DO": 6.8,
+    "saturation": 88.5
+    },
+  "location": {
+    "device_id": "sensor_001",
+    "site": null,
+    "battery": null,
+    "rssi":null,
+    "coordinates": {
+      "lat": null,
+      "lon": null
+    }
+  }
 }
 \`\`\`
 
