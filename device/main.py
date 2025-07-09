@@ -82,9 +82,6 @@ def send_lora_message(message):
         # Debug output
             print(f"🔧 Header hex: {header.hex()}")
             print(f"🔧 Payload: {message}")
-            print(f"🔧 Payload hex: {payload_bytes.hex()}")
-            print(f"🔧 Full packet hex: {full_packet.hex()}")
-            print(f"🔧 Full packet length: {len(full_packet)} bytes")
         
         # ส่งข้อมูล
         node.send(full_packet)
@@ -131,24 +128,15 @@ def retry_unsent_data():
 def generate_mock_sensor_data():
     data = {
         "timestamp": time.time(),
-        "sensor_readings": {
+        "device_id": device_id,
+        "sensors": {
             "ph": round(random.uniform(6.5, 8.5), 2),
             "ec": random.randint(600, 1200),          # µS/cm
             "tds": random.randint(300, 600),          # ppm
-            "salinity": round(random.uniform(0.1, 0.6), 2),  # ppt
-            "do": round(random.uniform(5.0, 9.0), 2),        # mg/L
-            "saturation": round(random.uniform(70.0, 100.0), 1)  # %
+            "sal": round(random.uniform(0.1, 0.6), 2),  # ppt
+            "do": round(random.uniform(5.0, 9.0), 2),   # mg/L
+            "sat": round(random.uniform(70.0, 100.0), 1) # %
         },
-        "location": {
-            "device_id": device_id,
-            "site": None,
-            "battery": None,
-            "rssi": None,
-            "coordinates": {
-                "lat": None,
-                "lon": None
-            }
-        }
     }
     return data
 

@@ -158,7 +158,7 @@ class DataDisplayFrame(ctk.CTkFrame):
                             .replace('\x12\x12', '')
                             .strip())
         print(f"Clean data: {clean_data}")
-        print(f"Clean data repr: {repr(clean_data)}")
+        # print(f"Clean data repr: {repr(clean_data)}")
         # สร้าง raw line
         raw_line = f"[{time_str}] {prefix} {clean_data}\n"
             

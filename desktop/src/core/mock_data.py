@@ -56,23 +56,16 @@ class MockDataGenerator:
         """Generate a single mock data payload"""
         return {
             "timestamp": time.time(),
-            "sensor_readings": {
-                "pH": round(random.uniform(6.5, 8.5), 2),
-                "EC": random.randint(600, 1200),
-                "TDS": random.randint(300, 600),
-                "Salinity": round(random.uniform(0.1, 0.6), 2),
-                "DO": round(random.uniform(5.0, 9.0), 2),
+            "sensors": {
+                "ph": round(random.uniform(6.5, 8.5), 2),
+                "ec": random.randint(600, 1200),
+                "tds": random.randint(300, 600),
+                "salinity": round(random.uniform(0.1, 0.6), 2),
+                "do": round(random.uniform(5.0, 9.0), 2),
                 "saturation": round(random.uniform(70.0, 100.0), 1)
             },
             "location": {
                 "device_id": device_id,
-                "site": None,
-                "battery": None,
-                "rssi": None,
-                "coordinates": {
-                    "lat": None,
-                    "lon": None
-                }
             }
         }
 
