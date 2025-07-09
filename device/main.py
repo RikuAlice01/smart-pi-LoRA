@@ -165,6 +165,11 @@ def main():
                 final_payload = "[EN]"+em.encrypt(payload)
                 print(f"🔐 Encrypted length: {len(final_payload)} bytes")
                 
+                decrypted_payload = em.decrypt(final_payload)
+                if debug:
+                    print(f"🔓 Decrypted payload: {decrypted_payload}")
+                    print(f"🔓 Decrypted length: {len(decrypted_payload)} bytes")
+                
             else:
                 final_payload = payload
                 

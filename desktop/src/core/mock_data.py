@@ -56,6 +56,7 @@ class MockDataGenerator:
         """Generate a single mock data payload"""
         return {
             "timestamp": time.time(),
+            "device_id": device_id,
             "sensors": {
                 "ph": round(random.uniform(6.5, 8.5), 2),
                 "ec": random.randint(600, 1200),
@@ -64,9 +65,6 @@ class MockDataGenerator:
                 "do": round(random.uniform(5.0, 9.0), 2),
                 "saturation": round(random.uniform(70.0, 100.0), 1)
             },
-            "location": {
-                "device_id": device_id,
-            }
         }
 
 # ทดสอบใช้งาน
