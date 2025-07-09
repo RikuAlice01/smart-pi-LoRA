@@ -174,6 +174,7 @@ class MainWindow:
         try:
             # Check if data is encrypted
             if self.config.encryption.enabled and self.encryption_manager.is_encrypted(data.decoded_data):
+                data.decoded_data = data.decoded_data.replace("[EN]", "")
                 decrypted_data = self.encryption_manager.decrypt(data.decoded_data)
                 self.data_display_frame.add_data(decrypted_data, data.timestamp, encrypted=True)
             else:

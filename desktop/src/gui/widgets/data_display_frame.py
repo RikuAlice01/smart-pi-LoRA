@@ -1,5 +1,5 @@
 """
-Data display widget for showing received sensor data
+Data display widget for showing received sensor data with improved statistics visualization
 """
 
 import customtkinter as ctk
@@ -8,6 +8,11 @@ from tkinter import ttk
 import json
 from datetime import datetime
 from typing import Dict, Any, List
+import matplotlib
+matplotlib.use('Agg')  # ใช้ non-interactive backend
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
 
 class DataDisplayFrame(ctk.CTkFrame):
     """Frame for displaying received data"""
@@ -17,6 +22,10 @@ class DataDisplayFrame(ctk.CTkFrame):
         
         self.data_history: List[Dict[str, Any]] = []
         self.max_history = 1000
+        
+        # Configure matplotlib to avoid threading issues
+        matplotlib.use('Agg')
+        plt.ioff()  # Turn off interactive mode
         
         self.setup_widgets()
     
@@ -68,6 +77,11 @@ class DataDisplayFrame(ctk.CTkFrame):
         self.notebook.add(self.parsed_frame, text="Sensor Data")
         self.setup_parsed_data_tab()
         
+        # Devices tab
+        self.devices_frame = ctk.CTkFrame(self.notebook)
+        self.notebook.add(self.devices_frame, text="Devices")
+        self.setup_devices_tab()
+        
         # Statistics tab
         self.stats_frame = ctk.CTkFrame(self.notebook)
         self.notebook.add(self.stats_frame, text="Statistics")
@@ -97,7 +111,7 @@ class DataDisplayFrame(ctk.CTkFrame):
         tree_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         
         # Create Treeview
-        columns = ("Time", "Device", "pH", "EC(µS/cm)", "TDS(ppm)", "Salinity(ppt)", "DO(mg/L)", "Sat(%)", "Battery(%)", "RSSI(dBm)")
+        columns = ("Time", "Device", "pH", "EC(µS/cm)", "TDS(ppm)", "Salinity(ppt)", "DO(mg/L)", "Sat(%)")
         self.data_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=15)
         
         # Configure columns
@@ -118,27 +132,92 @@ class DataDisplayFrame(ctk.CTkFrame):
         tree_frame.grid_columnconfigure(0, weight=1)
         tree_frame.grid_rowconfigure(0, weight=1)
     
+    def setup_devices_tab(self):
+        """Setup devices tab to show device information"""
+        self.devices_frame.grid_columnconfigure(0, weight=1)
+        self.devices_frame.grid_rowconfigure(0, weight=1)
+        
+        # Main container
+        main_container = ctk.CTkFrame(self.devices_frame)
+        main_container.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        main_container.grid_columnconfigure(0, weight=1)
+        main_container.grid_rowconfigure(1, weight=1)
+        
+        # Header
+        header_frame = ctk.CTkFrame(main_container)
+        header_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+        header_frame.grid_columnconfigure(0, weight=1)
+        
+        title_label = ctk.CTkLabel(
+            header_frame,
+            text="📱 Active Devices",
+            font=ctk.CTkFont(size=18, weight="bold")
+        )
+        title_label.grid(row=0, column=0, sticky="w", padx=10, pady=10)
+        
+        # Devices display area
+        self.devices_container = ctk.CTkScrollableFrame(main_container)
+        self.devices_container.grid(row=1, column=0, sticky="nsew", padx=10, pady=(5, 10))
+        self.devices_container.grid_columnconfigure(0, weight=1)
+        
+        # Initialize with no devices message
+        self.update_devices_display()
+    
     def setup_statistics_tab(self):
-        """Setup statistics tab"""
+        """Setup statistics tab with improved design"""
         self.stats_frame.grid_columnconfigure(0, weight=1)
         self.stats_frame.grid_rowconfigure(0, weight=1)
+
+        # Main container for statistics
+        main_container = ctk.CTkFrame(self.stats_frame)
+        main_container.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        main_container.grid_columnconfigure(0, weight=1)
+        main_container.grid_rowconfigure(1, weight=1)
         
-        # Statistics display
-        stats_text_frame = ctk.CTkFrame(self.stats_frame)
-        stats_text_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        stats_text_frame.grid_columnconfigure(0, weight=1)
-        stats_text_frame.grid_rowconfigure(0, weight=1)
+        # Header with controls
+        header_frame = ctk.CTkFrame(main_container)
+        header_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+        header_frame.grid_columnconfigure(0, weight=1)
         
-        self.stats_text = ctk.CTkTextbox(stats_text_frame, wrap="word")
-        self.stats_text.grid(row=0, column=0, sticky="nsew")
-        
-        # Update button
-        update_stats_btn = ctk.CTkButton(
-            self.stats_frame,
-            text="Update Statistics",
-            command=self.update_statistics
+        # Title
+        title_label = ctk.CTkLabel(
+            header_frame, 
+            text="📊 Sensor Data Statistics", 
+            font=ctk.CTkFont(size=18, weight="bold")
         )
-        update_stats_btn.grid(row=1, column=0, pady=10)
+        title_label.grid(row=0, column=0, sticky="w", padx=10, pady=10)
+        
+        # Controls
+        controls_frame = ctk.CTkFrame(header_frame)
+        controls_frame.grid(row=0, column=1, padx=10, pady=10)
+        
+        # Graph type selector
+        self.graph_type_var = ctk.StringVar(value="overview")
+        self.graph_type_menu = ctk.CTkOptionMenu(
+            controls_frame,
+            values=["overview", "trends", "comparison"],
+            variable=self.graph_type_var,
+            command=self.on_graph_type_change,
+            width=120
+        )
+        self.graph_type_menu.pack(side="left", padx=5)
+        
+        # Statistics display area
+        self.stats_container = ctk.CTkFrame(main_container)
+        self.stats_container.grid(row=1, column=0, sticky="nsew", padx=10, pady=(5, 10))
+        self.stats_container.grid_columnconfigure(0, weight=1)
+        self.stats_container.grid_rowconfigure(0, weight=1)
+        
+        # Scrollable frame for content
+        self.stats_scroll = ctk.CTkScrollableFrame(self.stats_container)
+        self.stats_scroll.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        self.stats_scroll.grid_columnconfigure(0, weight=1)
+        
+        self.canvas = None
+        self.stats_info_frame = None
+        
+        # Initialize with empty display
+        self.update_statistics()
     
     def add_data(self, data: str, timestamp: float, encrypted: bool = False, mock: bool = False):
         """Add new data to display"""
@@ -155,21 +234,17 @@ class DataDisplayFrame(ctk.CTkFrame):
         clean_data = (data.replace('\r', '')
                             .replace('\t', ' ')
                             .replace('\x00', '')
-                            .replace('\x12\x12', '')
+                            .replace('\x12', '')
+                            .replace('\n', '')
                             .strip())
         print(f"Clean data: {clean_data}")
-        # print(f"Clean data repr: {repr(clean_data)}")
-        # สร้าง raw line
+        
         raw_line = f"[{time_str}] {prefix} {clean_data}\n"
-            
         print(f"Raw line: {raw_line}")
-        print(f"Raw line repr: {repr(raw_line)}")
 
         # แทรกใน Text widget
         self.raw_text.insert("end", raw_line)
         self.raw_text.see("end")
-
-        # เพิ่มการ flush เพื่อให้แน่ใจว่าข้อมูลแสดงทันที  
         self.raw_text.update_idletasks()
         
         # Try to parse as JSON for structured display
@@ -188,6 +263,10 @@ class DataDisplayFrame(ctk.CTkFrame):
                 # Limit history size
                 if len(self.data_history) > self.max_history:
                     self.data_history = self.data_history[-self.max_history:]
+                
+                # Auto-update statistics and devices display
+                self.update_statistics()
+                self.update_devices_display()
                     
         except (json.JSONDecodeError, KeyError):
             # Not valid JSON or sensor data
@@ -196,27 +275,24 @@ class DataDisplayFrame(ctk.CTkFrame):
     def is_sensor_data(self, data: Dict[str, Any]) -> bool:
         """Check if data contains sensor information"""
         return (
-            isinstance(data.get("sensor_readings"), dict) and
-            isinstance(data.get("location"), dict) and
-            "device_id" in data["location"]
+            isinstance(data.get("sensors"), dict) and
+            isinstance(data.get("device_id"), str)
         )
             
     def add_parsed_data(self, data: Dict[str, Any], time_str: str):
         """Add parsed sensor data to tree view"""
-        readings = data.get("sensor_readings", {})
-        location = data.get("location", {})
+        readings = data.get("sensors", {})
+        device_id = data.get("device_id", "Unknown")
 
         values = (
             time_str,
-            location.get("device_id", "Unknown"),
-            f"{readings.get('ph', 0):.1f}",
+            device_id,
+            f"{readings.get('ph', 0):.2f}",
             f"{readings.get('ec', 0):.1f}",
             f"{readings.get('tds', 0):.1f}",
-            f"{readings.get('salinity', 0):.1f}",
-            f"{readings.get('do', 0):.1f}",
-            f"{readings.get('saturation', 0):.1f}",
-            f"{readings.get('battery', 0)}",
-            f"{readings.get('rssi', 0):.1f}",
+            f"{readings.get('sal', 0):.2f}",
+            f"{readings.get('do', 0):.2f}",
+            f"{readings.get('sat', 0):.1f}",
         )
 
         self.data_tree.insert("", "end", values=values)
@@ -225,6 +301,135 @@ class DataDisplayFrame(ctk.CTkFrame):
         children = self.data_tree.get_children()
         if children:
             self.data_tree.see(children[-1])
+    
+    def update_devices_display(self):
+        """Update devices display with latest information"""
+        # Clear existing widgets
+        for widget in self.devices_container.winfo_children():
+            widget.destroy()
+        
+        if not self.data_history:
+            # Show no devices message
+            no_devices_frame = ctk.CTkFrame(self.devices_container)
+            no_devices_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=20)
+            no_devices_frame.grid_columnconfigure(0, weight=1)
+            
+            icon_label = ctk.CTkLabel(
+                no_devices_frame,
+                text="📱",
+                font=ctk.CTkFont(size=48)
+            )
+            icon_label.grid(row=0, column=0, pady=(20, 10))
+            
+            message_label = ctk.CTkLabel(
+                no_devices_frame,
+                text="No devices detected yet",
+                font=ctk.CTkFont(size=16, weight="bold")
+            )
+            message_label.grid(row=1, column=0, pady=(0, 20))
+            return
+        
+        # Group data by device
+        device_data = {}
+        for entry in self.data_history:
+            device_id = entry.get("device_id", "Unknown")
+            if device_id not in device_data:
+                device_data[device_id] = {
+                    "first_seen": entry["timestamp"],
+                    "last_seen": entry["timestamp"],
+                    "message_count": 0,
+                    "latest_sensors": {}
+                }
+            
+            device_data[device_id]["last_seen"] = entry["timestamp"]
+            device_data[device_id]["message_count"] += 1
+            device_data[device_id]["latest_sensors"] = entry.get("sensors", {})
+        
+        # Create device cards
+        row = 0
+        for device_id, info in device_data.items():
+            self.create_device_card(device_id, info, row)
+            row += 1
+    
+    def create_device_card(self, device_id: str, info: Dict[str, Any], row: int):
+        """Create a card for each device"""
+        card_frame = ctk.CTkFrame(self.devices_container)
+        card_frame.grid(row=row, column=0, sticky="ew", padx=10, pady=5)
+        card_frame.grid_columnconfigure(1, weight=1)
+        
+        # Device icon and ID
+        icon_label = ctk.CTkLabel(
+            card_frame,
+            text="📱",
+            font=ctk.CTkFont(size=24)
+        )
+        icon_label.grid(row=0, column=0, rowspan=2, padx=15, pady=15)
+        
+        device_label = ctk.CTkLabel(
+            card_frame,
+            text=f"Device: {device_id}",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        device_label.grid(row=0, column=1, sticky="w", padx=10, pady=(15, 5))
+        
+        # Device info
+        first_seen = datetime.fromtimestamp(info["first_seen"]).strftime("%H:%M:%S")
+        last_seen = datetime.fromtimestamp(info["last_seen"]).strftime("%H:%M:%S")
+        
+        info_text = f"Messages: {info['message_count']} | First seen: {first_seen} | Last seen: {last_seen}"
+        info_label = ctk.CTkLabel(
+            card_frame,
+            text=info_text,
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        info_label.grid(row=1, column=1, sticky="w", padx=10, pady=(0, 5))
+        
+        # Latest sensor values
+        sensors_frame = ctk.CTkFrame(card_frame)
+        sensors_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10))
+        sensors_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        
+        sensors_title = ctk.CTkLabel(
+            sensors_frame,
+            text="Latest Sensor Values:",
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        sensors_title.grid(row=0, column=0, columnspan=3, padx=10, pady=(10, 5))
+        
+        # Display sensor values in a grid
+        latest_sensors = info.get("latest_sensors", {})
+        sensor_labels = {
+            "ph": "pH",
+            "ec": "EC (µS/cm)",
+            "tds": "TDS (ppm)",
+            "sal": "Salinity (ppt)",
+            "do": "DO (mg/L)",
+            "sat": "Sat (%)"
+        }
+        
+        row_idx = 1
+        col_idx = 0
+        for sensor_key, label in sensor_labels.items():
+            if sensor_key in latest_sensors:
+                value = latest_sensors[sensor_key]
+                sensor_text = f"{label}: {value:.2f}"
+                
+                sensor_label = ctk.CTkLabel(
+                    sensors_frame,
+                    text=sensor_text,
+                    font=ctk.CTkFont(size=11)
+                )
+                sensor_label.grid(row=row_idx, column=col_idx, padx=5, pady=2, sticky="w")
+                
+                col_idx += 1
+                if col_idx >= 3:
+                    col_idx = 0
+                    row_idx += 1
+        
+        # Add some padding at the bottom
+        if row_idx > 1 or col_idx > 0:
+            sensors_frame.grid_rowconfigure(row_idx, minsize=10)
     
     def clear_data(self):
         """Clear all displayed data"""
@@ -237,8 +442,20 @@ class DataDisplayFrame(ctk.CTkFrame):
         # Clear history
         self.data_history.clear()
         
-        # Clear statistics
-        self.stats_text.delete("1.0", "end")
+        # Clear and close matplotlib figures
+        if self.canvas:
+            self.canvas.get_tk_widget().destroy()
+            self.canvas = None
+        
+        plt.close('all')  # Close all matplotlib figures
+        
+        if self.stats_info_frame:
+            self.stats_info_frame.destroy()
+            self.stats_info_frame = None
+        
+        # Update displays
+        self.update_statistics()
+        self.update_devices_display()
     
     def export_data(self):
         """Export data to file"""
@@ -261,55 +478,430 @@ class DataDisplayFrame(ctk.CTkFrame):
             except Exception as e:
                 tk.messagebox.showerror("Export Error", f"Failed to export data: {e}")
     
+    def on_graph_type_change(self, value):
+        """Handle graph type change"""
+        self.update_statistics()
+    
     def update_statistics(self):
         """Update statistics display"""
         if not self.data_history:
-            self.stats_text.delete("1.0", "end")
-            self.stats_text.insert("1.0", "No data available for statistics")
+            self.show_no_data_message()
             return
-        
-        # Calculate statistics
+
         stats = self.calculate_statistics()
         
-        # Format statistics text
-        stats_text = self.format_statistics(stats)
+        # Clear existing content
+        for widget in self.stats_scroll.winfo_children():
+            widget.destroy()
         
-        # Update display
-        self.stats_text.delete("1.0", "end")
-        self.stats_text.insert("1.0", stats_text)
+        # Create info cards
+        self.create_info_cards(stats)
+        
+        # Create graphs based on selected type
+        graph_type = self.graph_type_var.get()
+        if graph_type == "overview":
+            self.create_overview_graphs(stats)
+        elif graph_type == "trends":
+            self.create_trend_graphs(stats)
+        elif graph_type == "comparison":
+            self.create_comparison_graphs(stats)
+    
+    def show_no_data_message(self):
+        """Show message when no data is available"""
+        # Clear existing content
+        for widget in self.stats_scroll.winfo_children():
+            widget.destroy()
+        
+        no_data_frame = ctk.CTkFrame(self.stats_scroll)
+        no_data_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=20)
+        no_data_frame.grid_columnconfigure(0, weight=1)
+        
+        icon_label = ctk.CTkLabel(
+            no_data_frame,
+            text="📊",
+            font=ctk.CTkFont(size=48)
+        )
+        icon_label.grid(row=0, column=0, pady=(20, 10))
+        
+        message_label = ctk.CTkLabel(
+            no_data_frame,
+            text="No data available for statistics",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        message_label.grid(row=1, column=0, pady=(0, 20))
+    
+    def create_info_cards(self, stats: Dict[str, Any]):
+        """Create information cards with statistics"""
+        info_frame = ctk.CTkFrame(self.stats_scroll)
+        info_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        info_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        
+        # Total messages card
+        total_card = self.create_stat_card(
+            info_frame,
+            "📈 Total Messages",
+            str(stats['total_messages']),
+            "#4CAF50"
+        )
+        total_card.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        
+        # Active devices card
+        devices_count = len(stats['devices'])
+        devices_card = self.create_stat_card(
+            info_frame,
+            "📱 Active Devices",
+            str(devices_count),
+            "#2196F3"
+        )
+        devices_card.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        
+        # Latest reading card
+        if self.data_history:
+            latest_time = datetime.fromtimestamp(self.data_history[-1]['timestamp'])
+            time_str = latest_time.strftime("%H:%M:%S")
+            latest_card = self.create_stat_card(
+                info_frame,
+                "🕐 Latest Reading",
+                time_str,
+                "#FF9800"
+            )
+            latest_card.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+    
+    def create_stat_card(self, parent, title: str, value: str, color: str):
+        """Create a statistics card"""
+        card = ctk.CTkFrame(parent)
+        card.grid_columnconfigure(0, weight=1)
+        
+        title_label = ctk.CTkLabel(
+            card,
+            text=title,
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        title_label.grid(row=0, column=0, padx=10, pady=(10, 5))
+        
+        value_label = ctk.CTkLabel(
+            card,
+            text=value,
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=color
+        )
+        value_label.grid(row=1, column=0, padx=10, pady=(0, 10))
+        
+        return card
+    
+    def create_overview_graphs(self, stats: Dict[str, Any]):
+        """Create overview graphs with modern styling"""
+        try:
+            # Close any existing figures to prevent memory leaks
+            plt.close('all')
+            
+            # Create matplotlib figure with proper settings
+            fig = plt.figure(figsize=(15, 10))
+            fig.suptitle('Sensor Data Overview', fontsize=16, fontweight='bold', y=0.98)
+            
+            # Modern color palette
+            colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c']
+            
+            sensors = ["ph", "ec", "tds", "sal", "do", "sat"]
+            sensor_names = {
+                "ph": "pH Level",
+                "ec": "Electrical Conductivity",
+                "tds": "Total Dissolved Solids",
+                "sal": "Salinity",
+                "do": "Dissolved Oxygen",
+                "sat": "Oxygen Saturation"
+            }
+            
+            sensor_units = {
+                "ph": "",
+                "ec": "µS/cm",
+                "tds": "ppm",
+                "sal": "ppt",
+                "do": "mg/L",
+                "sat": "%"
+            }
+            
+            for idx, sensor in enumerate(sensors):
+                ax = fig.add_subplot(2, 3, idx + 1)
+                
+                data = stats.get(sensor, {})
+                
+                if data and data.get('count', 0) > 0:
+                    # Create bar chart with gradient effect
+                    values = [data["min"], data["avg"], data["max"]]
+                    labels = ["Min", "Avg", "Max"]
+                    
+                    bars = ax.bar(labels, values, color=colors[idx], alpha=0.7, edgecolor='white', linewidth=2)
+                    
+                    # Add value labels on bars
+                    for bar, value in zip(bars, values):
+                        height = bar.get_height()
+                        ax.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                               f'{value:.1f}', ha='center', va='bottom', fontweight='bold')
+                    
+                    # Styling
+                    ax.set_title(f'{sensor_names[sensor]}', fontsize=12, fontweight='bold', pad=15)
+                    ax.set_ylabel(f'Value ({sensor_units[sensor]})', fontsize=10)
+                    ax.grid(True, alpha=0.3, linestyle='--')
+                    ax.set_facecolor('#f8f9fa')
+                    
+                    # Set y-axis to start from 0 with some padding
+                    y_max = max(values) * 1.1
+                    ax.set_ylim(0, y_max)
+                    
+                else:
+                    ax.text(0.5, 0.5, 'No Data Available', ha='center', va='center', 
+                           fontsize=12, transform=ax.transAxes, style='italic')
+                    ax.set_title(f'{sensor_names[sensor]}', fontsize=12, fontweight='bold', pad=15)
+                    ax.set_facecolor('#f8f9fa')
+            
+            plt.tight_layout()
+            
+            # Embed in tkinter
+            self.embed_matplotlib_figure(fig, row=1)
+            
+        except Exception as e:
+            print(f"Error creating overview graphs: {e}")
+            self.show_graph_error("Error creating overview graphs")
+    
+    def create_trend_graphs(self, stats: Dict[str, Any]):
+        """Create trend graphs showing data over time"""
+        if len(self.data_history) < 2:
+            self.show_insufficient_data_message("Need at least 2 data points for trend analysis")
+            return
+        
+        try:
+            # Close any existing figures
+            plt.close('all')
+            
+            # Prepare time series data
+            timestamps = [entry['timestamp'] for entry in self.data_history]
+            time_labels = [datetime.fromtimestamp(ts).strftime("%H:%M:%S") for ts in timestamps]
+            
+            # Create figure with subplots
+            fig = plt.figure(figsize=(15, 12))
+            fig.suptitle('Sensor Data Trends Over Time', fontsize=16, fontweight='bold', y=0.98)
+            
+            sensors = ["ph", "ec", "tds", "sal", "do", "sat"]
+            colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c']
+            
+            for idx, sensor in enumerate(sensors):
+                ax = fig.add_subplot(3, 2, idx + 1)
+                
+                # Extract sensor values
+                values = []
+                for entry in self.data_history:
+                    sensor_data = entry.get('sensors', {})
+                    values.append(sensor_data.get(sensor, 0))
+                
+                if values:
+                    # Create line plot with markers
+                    ax.plot(range(len(values)), values, color=colors[idx], linewidth=2, 
+                           marker='o', markersize=4, alpha=0.8)
+                    
+                    # Add trend line
+                    if len(values) > 1:
+                        z = np.polyfit(range(len(values)), values, 1)
+                        p = np.poly1d(z)
+                        ax.plot(range(len(values)), p(range(len(values))), 
+                               color=colors[idx], linestyle='--', alpha=0.6)
+                    
+                    # Styling
+                    ax.set_title(f'{sensor.upper()} Trend', fontsize=12, fontweight='bold')
+                    ax.set_ylabel('Value', fontsize=10)
+                    ax.grid(True, alpha=0.3)
+                    ax.set_facecolor('#f8f9fa')
+                    
+                    # Set x-axis labels (show every nth label to avoid crowding)
+                    step = max(1, len(time_labels) // 10)
+                    ax.set_xticks(range(0, len(time_labels), step))
+                    ax.set_xticklabels([time_labels[i] for i in range(0, len(time_labels), step)], 
+                                      rotation=45, ha='right')
+            
+            plt.tight_layout()
+            self.embed_matplotlib_figure(fig, row=1)
+            
+        except Exception as e:
+            print(f"Error creating trend graphs: {e}")
+            self.show_graph_error("Error creating trend graphs")
+    
+    def create_comparison_graphs(self, stats: Dict[str, Any]):
+        """Create comparison graphs between different sensors"""
+        try:
+            # Close any existing figures
+            plt.close('all')
+            
+            # Create radar chart for sensor comparison
+            fig = plt.figure(figsize=(15, 7))
+            fig.suptitle('Sensor Data Comparison', fontsize=16, fontweight='bold', y=0.98)
+            
+            ax1 = fig.add_subplot(1, 2, 1)
+            ax2 = fig.add_subplot(1, 2, 2)
+            
+            # Normalize data for radar chart
+            sensors = ["ph", "ec", "tds", "sal", "do", "sat"]
+            values = []
+            labels = []
+            
+            for sensor in sensors:
+                data = stats.get(sensor, {})
+                if data and data.get('count', 0) > 0:
+                    values.append(data['avg'])
+                    labels.append(sensor.upper())
+            
+            if values:
+                # Create pie chart for device distribution
+                if stats['devices']:
+                    device_names = list(stats['devices'].keys())
+                    device_counts = list(stats['devices'].values())
+                    
+                    # Create pie chart
+                    wedges, texts, autotexts = ax1.pie(device_counts, labels=device_names, 
+                                                      autopct='%1.1f%%', startangle=90,
+                                                      colors=plt.cm.Set3(np.linspace(0, 1, len(device_names))))
+                    
+                    ax1.set_title('Data Distribution by Device', fontsize=12, fontweight='bold')
+                    
+                    # Style the text
+                    for autotext in autotexts:
+                        autotext.set_color('white')
+                        autotext.set_fontweight('bold')
+                
+                # Create bar chart for sensor averages
+                colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c']
+                bars = ax2.bar(labels, values, color=colors[:len(values)], alpha=0.7, 
+                              edgecolor='white', linewidth=2)
+                
+                # Add value labels
+                for bar, value in zip(bars, values):
+                    height = bar.get_height()
+                    ax2.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                            f'{value:.1f}', ha='center', va='bottom', fontweight='bold')
+                
+                ax2.set_title('Average Sensor Values', fontsize=12, fontweight='bold')
+                ax2.set_ylabel('Average Value', fontsize=10)
+                ax2.grid(True, alpha=0.3, axis='y')
+                ax2.set_facecolor('#f8f9fa')
+                
+                # Rotate x-axis labels
+                plt.setp(ax2.get_xticklabels(), rotation=45, ha='right')
+            
+            plt.tight_layout()
+            self.embed_matplotlib_figure(fig, row=1)
+            
+        except Exception as e:
+            print(f"Error creating comparison graphs: {e}")
+            self.show_graph_error("Error creating comparison graphs")
+    
+    def show_insufficient_data_message(self, message: str):
+        """Show message when insufficient data for analysis"""
+        info_frame = ctk.CTkFrame(self.stats_scroll)
+        info_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=20)
+        info_frame.grid_columnconfigure(0, weight=1)
+        
+        icon_label = ctk.CTkLabel(
+            info_frame,
+            text="⚠️",
+            font=ctk.CTkFont(size=48)
+        )
+        icon_label.grid(row=0, column=0, pady=(20, 10))
+        
+        message_label = ctk.CTkLabel(
+            info_frame,
+            text=message,
+            font=ctk.CTkFont(size=14),
+            wraplength=400
+        )
+        message_label.grid(row=1, column=0, pady=(0, 20))
+    
+    def embed_matplotlib_figure(self, fig, row: int):
+        """Embed matplotlib figure in tkinter"""
+        try:
+            # Clear existing canvas
+            if self.canvas:
+                self.canvas.get_tk_widget().destroy()
+                self.canvas = None
+            
+            # Create new canvas
+            canvas_frame = ctk.CTkFrame(self.stats_scroll)
+            canvas_frame.grid(row=row, column=0, sticky="nsew", padx=10, pady=10)
+            canvas_frame.grid_columnconfigure(0, weight=1)
+            canvas_frame.grid_rowconfigure(0, weight=1)
+            
+            self.canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
+            self.canvas.draw()
+            self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+            
+        except Exception as e:
+            print(f"Error embedding matplotlib figure: {e}")
+            # Clean up in case of error
+            if hasattr(fig, 'clear'):
+                fig.clear()
+            plt.close(fig)
+    
+    def show_graph_error(self, message: str):
+        """Show error message when graph creation fails"""
+        error_frame = ctk.CTkFrame(self.stats_scroll)
+        error_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=20)
+        error_frame.grid_columnconfigure(0, weight=1)
+        
+        icon_label = ctk.CTkLabel(
+            error_frame,
+            text="⚠️",
+            font=ctk.CTkFont(size=48)
+        )
+        icon_label.grid(row=0, column=0, pady=(20, 10))
+        
+        message_label = ctk.CTkLabel(
+            error_frame,
+            text=message,
+            font=ctk.CTkFont(size=14),
+            wraplength=400
+        )
+        message_label.grid(row=1, column=0, pady=(0, 20))
     
     def calculate_statistics(self) -> Dict[str, Any]:
         """Calculate statistics from data history"""
         if not self.data_history:
             return {}
         
-        # Device counts
         devices = {}
-        temperatures = []
-        humidities = []
-        pressures = []
-        batteries = []
+        
+        # เตรียม list เก็บค่าแต่ละ sensor
+        ph_values = []
+        ec_values = []
+        tds_values = []
+        sal_values = []
+        do_values = []
+        sat_values = []
         
         for entry in self.data_history:
             device_id = entry.get("device_id", "Unknown")
             devices[device_id] = devices.get(device_id, 0) + 1
             
-            if "temperature" in entry:
-                temperatures.append(entry["temperature"])
-            if "humidity" in entry:
-                humidities.append(entry["humidity"])
-            if "pressure" in entry:
-                pressures.append(entry["pressure"])
-            if "battery" in entry:
-                batteries.append(entry["battery"])
+            sensors = entry.get("sensors", {})
+            if "ph" in sensors:
+                ph_values.append(sensors["ph"])
+            if "ec" in sensors:
+                ec_values.append(sensors["ec"])
+            if "tds" in sensors:
+                tds_values.append(sensors["tds"])
+            if "sal" in sensors:
+                sal_values.append(sensors["sal"])
+            if "do" in sensors:
+                do_values.append(sensors["do"])
+            if "sat" in sensors:
+                sat_values.append(sensors["sat"])
         
         stats = {
             "total_messages": len(self.data_history),
             "devices": devices,
-            "temperature": self.calc_stats(temperatures),
-            "humidity": self.calc_stats(humidities),
-            "pressure": self.calc_stats(pressures),
-            "battery": self.calc_stats(batteries)
+            "ph": self.calc_stats(ph_values),
+            "ec": self.calc_stats(ec_values),
+            "tds": self.calc_stats(tds_values),
+            "sal": self.calc_stats(sal_values),
+            "do": self.calc_stats(do_values),
+            "sat": self.calc_stats(sat_values),
         }
         
         return stats
@@ -325,29 +917,3 @@ class DataDisplayFrame(ctk.CTkFrame):
             "avg": sum(values) / len(values),
             "count": len(values)
         }
-    
-    def format_statistics(self, stats: Dict[str, Any]) -> str:
-        """Format statistics for display"""
-        if not stats:
-            return "No statistics available"
-        
-        text = f"=== DATA STATISTICS ===\n\n"
-        text += f"Total Messages: {stats['total_messages']}\n\n"
-        
-        # Device statistics
-        text += "Device Message Counts:\n"
-        for device, count in stats['devices'].items():
-            text += f"  {device}: {count} messages\n"
-        text += "\n"
-        
-        # Sensor statistics
-        for sensor, data in stats.items():
-            if sensor in ['temperature', 'humidity', 'pressure', 'battery'] and data['count'] > 0:
-                unit = {"temperature": "°C", "humidity": "%", "pressure": " hPa", "battery": "%"}[sensor]
-                text += f"{sensor.title()} Statistics:\n"
-                text += f"  Count: {data['count']}\n"
-                text += f"  Min: {data['min']:.2f}{unit}\n"
-                text += f"  Max: {data['max']:.2f}{unit}\n"
-                text += f"  Average: {data['avg']:.2f}{unit}\n\n"
-        
-        return text
