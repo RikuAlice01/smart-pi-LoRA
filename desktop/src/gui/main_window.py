@@ -15,19 +15,9 @@ from src.gui.widgets.data_display_frame import DataDisplayFrame
 from src.gui.widgets.control_frame import ControlFrame
 import base64
 import os
+import secrets
 
 KEYFILE = 'keyfile.bin'
-
-def load_key():
-    if not os.path.exists(KEYFILE):
-        raise FileNotFoundError(f"Key file '{KEYFILE}' not found.")
-    with open(KEYFILE, 'rb') as f:
-        key = f.read()
-        if len(key) != 32:
-            raise ValueError("Key length must be exactly 32 bytes (256 bits).")
-        return key
-
-EN_KEY = base64.b64encode(load_key()).decode('utf-8')
 
 class MainWindow:
     """Main application window"""
@@ -36,7 +26,19 @@ class MainWindow:
         self.config = config
         self.root = ctk.CTk()
         self.setup_window()
-        
+
+        # Load encryption key from file
+        try:
+            EN_KEY = base64.b64encode(self.load_key()).decode('utf-8')
+        except Exception as e:
+            print(f"Error loading encryption key: {e}")
+            EN_KEY = None
+            if EN_KEY is None:
+                key = secrets.token_bytes(32)
+                with open("keyfile.bin", "wb") as f:
+                    f.write(key)
+                EN_KEY = base64.b64encode(key).decode('utf-8')
+
         # Core components
         self.serial_manager = SerialManager(self.on_serial_data_received)
         self.encryption_manager = EncryptionManager(
@@ -56,10 +58,19 @@ class MainWindow:
         
         # Status
         self.is_mock_mode = False
-        
+
+    def load_key(self):
+        if not os.path.exists(KEYFILE):
+            raise FileNotFoundError(f"Key file '{KEYFILE}' not found.")
+        with open(KEYFILE, 'rb') as f:
+            key = f.read()
+            if len(key) != 32:
+                raise ValueError("Key length must be exactly 32 bytes (256 bits).")
+            return key
+
     def setup_window(self):
         """Setup main window properties"""
-        self.root.title("LoRa SX126x Gateway")
+        self.root.title("LoRa SX126x Gateway 1.0 by ME Group Enterprise")
         self.root.geometry("1200x800")
         self.root.minsize(800, 600)
         
@@ -90,6 +101,8 @@ class MainWindow:
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="About", command=self.show_about)
+        help_menu.add_separator()
+        help_menu.add_command(label="Generate Key File", command=self.gen_keyfile)
     
     def setup_gui(self):
         """Setup GUI components"""
@@ -99,7 +112,7 @@ class MainWindow:
         
         title_label = ctk.CTkLabel(
             title_frame, 
-            text="LoRa SX126x Gateway", 
+            text="LoRa SX126x Gateway 1.0 by ME Group Enterprise", 
             font=ctk.CTkFont(size=24, weight="bold")
         )
         title_label.pack(pady=10)
@@ -170,7 +183,7 @@ class MainWindow:
     
     def on_serial_data_received(self, data: SerialData):
         """Handle received serial data"""
-        print(f"Received serial data: {data.decoded_data}")
+        print(f"Received: {data.decoded_data}")
         try:
             # Check if data is encrypted
             if self.config.encryption.enabled and self.encryption_manager.is_encrypted(data.decoded_data):
@@ -252,7 +265,17 @@ class MainWindow:
             "LoRa SX126x Gateway v1.0\n\n"
             "A desktop application for receiving and displaying\n"
             "LoRa sensor data via USB UART connection.\n\n"
-            "Built with Python 3.10 and CustomTkinter"
+            "Built with Python 3.10 and CustomTkinter\n"
+            "by ME Group Enterprise"
+        )
+
+    def gen_keyfile(self):
+        key = secrets.token_bytes(32)
+        with open("keyfile.bin", "wb") as f:
+            f.write(key)
+        messagebox.showinfo(
+            "Key File Generated", 
+            "A new key file has been generated and saved as 'keyfile.bin'."
         )
     
     def on_closing(self):

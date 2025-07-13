@@ -9,10 +9,10 @@ import json
 from datetime import datetime
 from typing import Dict, Any, List
 import matplotlib
-matplotlib.use('Agg')  # ใช้ non-interactive backend
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
+import threading
 
 class DataDisplayFrame(ctk.CTkFrame):
     """Frame for displaying received data"""
@@ -22,6 +22,8 @@ class DataDisplayFrame(ctk.CTkFrame):
         
         self.data_history: List[Dict[str, Any]] = []
         self.max_history = 1000
+        self._update_lock = threading.Lock()
+        self._widget_references = set()  # Track widget references
         
         # Configure matplotlib to avoid threading issues
         matplotlib.use('Agg')
@@ -67,11 +69,6 @@ class DataDisplayFrame(ctk.CTkFrame):
         self.notebook = ttk.Notebook(self)
         self.notebook.grid(row=1, column=0, sticky="nsew", padx=10, pady=(5, 10))
         
-        # Raw data tab
-        self.raw_frame = ctk.CTkFrame(self.notebook)
-        self.notebook.add(self.raw_frame, text="Raw Data")
-        self.setup_raw_data_tab()
-        
         # Parsed data tab
         self.parsed_frame = ctk.CTkFrame(self.notebook)
         self.notebook.add(self.parsed_frame, text="Sensor Data")
@@ -86,6 +83,11 @@ class DataDisplayFrame(ctk.CTkFrame):
         self.stats_frame = ctk.CTkFrame(self.notebook)
         self.notebook.add(self.stats_frame, text="Statistics")
         self.setup_statistics_tab()
+
+        # Raw data tab
+        self.raw_frame = ctk.CTkFrame(self.notebook)
+        self.notebook.add(self.raw_frame, text="Raw Data")
+        self.setup_raw_data_tab()
     
     def setup_raw_data_tab(self):
         """Setup raw data display tab"""
@@ -219,57 +221,74 @@ class DataDisplayFrame(ctk.CTkFrame):
         # Initialize with empty display
         self.update_statistics()
     
-    def add_data(self, data: str, timestamp: float, encrypted: bool = False, mock: bool = False):
-        """Add new data to display"""
-        print(f"Adding data: {data} at {timestamp}, encrypted={encrypted}, mock={mock}")
-        # Format timestamp
-        dt = datetime.fromtimestamp(timestamp)
-        time_str = dt.strftime("%H:%M:%S")
-        
-        # Add to raw data display
-        prefix = "[ENCRYPTED]" if encrypted else "[MOCK]" if mock else "[RAW]"
-        print(f"Data prefix: {prefix}")
-
-        data = data.strip()
-        clean_data = (data.replace('\r', '')
-                            .replace('\t', ' ')
-                            .replace('\x00', '')
-                            .replace('\x12', '')
-                            .replace('\n', '')
-                            .strip())
-        print(f"Clean data: {clean_data}")
-        
-        raw_line = f"[{time_str}] {prefix} {clean_data}\n"
-        print(f"Raw line: {raw_line}")
-
-        # แทรกใน Text widget
-        self.raw_text.insert("end", raw_line)
-        self.raw_text.see("end")
-        self.raw_text.update_idletasks()
-        
-        # Try to parse as JSON for structured display
+    def safe_widget_destroy(self, widget):
+        """Safely destroy a widget and remove from tracking"""
         try:
-            parsed_data = json.loads(clean_data)
-            if self.is_sensor_data(parsed_data):
-                self.add_parsed_data(parsed_data, time_str)
-                
-                # Store in history
-                parsed_data['timestamp'] = timestamp
-                parsed_data['encrypted'] = encrypted
-                parsed_data['mock'] = mock
-                parsed_data['raw'] = "[RAW]"
-                self.data_history.append(parsed_data)
-                
-                # Limit history size
-                if len(self.data_history) > self.max_history:
-                    self.data_history = self.data_history[-self.max_history:]
-                
-                # Auto-update statistics and devices display
-                self.update_statistics()
-                self.update_devices_display()
+            if widget and hasattr(widget, 'winfo_exists') and widget.winfo_exists():
+                widget.destroy()
+            if widget in self._widget_references:
+                self._widget_references.remove(widget)
+        except (tk.TclError, AttributeError):
+            pass
+    
+    def add_data(self, data: str, timestamp: float, encrypted: bool = False, mock: bool = False):
+        with self._update_lock:
+            # Format timestamp
+            dt = datetime.fromtimestamp(timestamp)
+            time_str = dt.strftime("%H:%M:%S")
+            
+            # Add to raw data display
+            prefix = "[ENCRYPTED]" if encrypted else "[MOCK]" if mock else "[RAW]"
+
+            data = data.strip()
+            clean_data = (data.replace('\r', '')
+                                .replace('\t', ' ')
+                                .replace('\x00', '')
+                                .replace('\x12', '')
+                                .replace('\n', '')
+                                .strip())
+            
+            raw_line = f"[{time_str}] {prefix} {clean_data}\n"
+            # print(f"Raw line: {raw_line} at {timestamp}, encrypted={encrypted}, mock={mock}")
+
+            # แทรกใน Text widget
+            try:
+                self.raw_text.insert("end", raw_line)
+                self.raw_text.see("end")
+                self.raw_text.update_idletasks()
+            except tk.TclError:
+                pass
+            
+            # Try to parse as JSON for structured display
+            try:
+                parsed_data = json.loads(clean_data)
+                if self.is_sensor_data(parsed_data):
+                    self.add_parsed_data(parsed_data, time_str)
                     
-        except (json.JSONDecodeError, KeyError):
-            # Not valid JSON or sensor data
+                    # Store in history
+                    parsed_data['timestamp'] = timestamp
+                    parsed_data['encrypted'] = encrypted
+                    parsed_data['mock'] = mock
+                    parsed_data['raw'] = "[RAW]"
+                    self.data_history.append(parsed_data)
+                    
+                    # Limit history size
+                    if len(self.data_history) > self.max_history:
+                        self.data_history = self.data_history[-self.max_history:]
+                    
+                    # Schedule updates to avoid immediate widget operations
+                    self.after(100, self.delayed_update)
+                        
+            except (json.JSONDecodeError, KeyError):
+                # Not valid JSON or sensor data
+                pass
+    
+    def delayed_update(self):
+        """Delayed update to avoid widget conflicts"""
+        try:
+            self.update_statistics()
+            self.update_devices_display()
+        except tk.TclError:
             pass
     
     def is_sensor_data(self, data: Dict[str, Any]) -> bool:
@@ -281,38 +300,74 @@ class DataDisplayFrame(ctk.CTkFrame):
             
     def add_parsed_data(self, data: Dict[str, Any], time_str: str):
         """Add parsed sensor data to tree view"""
-        readings = data.get("sensors", {})
-        device_id = data.get("device_id", "Unknown")
+        try:
+            readings = data.get("sensors", {})
+            device_id = data.get("device_id", "Unknown")
 
-        values = (
-            time_str,
-            device_id,
-            f"{readings.get('ph', 0):.2f}",
-            f"{readings.get('ec', 0):.1f}",
-            f"{readings.get('tds', 0):.1f}",
-            f"{readings.get('sal', 0):.2f}",
-            f"{readings.get('do', 0):.2f}",
-            f"{readings.get('sat', 0):.1f}",
-        )
+            values = (
+                time_str,
+                device_id,
+                f"{readings.get('ph', 0):.2f}",
+                f"{readings.get('ec', 0):.1f}",
+                f"{readings.get('tds', 0):.1f}",
+                f"{readings.get('sal', 0):.2f}",
+                f"{readings.get('do', 0):.2f}",
+                f"{readings.get('sat', 0):.1f}",
+            )
 
-        self.data_tree.insert("", "end", values=values)
+            self.data_tree.insert("", "end", values=values)
 
-        # Auto-scroll
-        children = self.data_tree.get_children()
-        if children:
-            self.data_tree.see(children[-1])
+            # Auto-scroll
+            children = self.data_tree.get_children()
+            if children:
+                self.data_tree.see(children[-1])
+        except tk.TclError:
+            pass
     
     def update_devices_display(self):
         """Update devices display with latest information"""
-        # Clear existing widgets
-        for widget in self.devices_container.winfo_children():
-            widget.destroy()
-        
-        if not self.data_history:
-            # Show no devices message
+        try:
+            # Clear existing widgets safely
+            for widget in self.devices_container.winfo_children():
+                self.safe_widget_destroy(widget)
+            
+            if not self.data_history:
+                # Show no devices message
+                self.create_no_devices_message()
+                return
+            
+            # Group data by device
+            device_data = {}
+            for entry in self.data_history:
+                device_id = entry.get("device_id", "Unknown")
+                if device_id not in device_data:
+                    device_data[device_id] = {
+                        "first_seen": entry["timestamp"],
+                        "last_seen": entry["timestamp"],
+                        "message_count": 0,
+                        "latest_sensors": {}
+                    }
+                
+                device_data[device_id]["last_seen"] = entry["timestamp"]
+                device_data[device_id]["message_count"] += 1
+                device_data[device_id]["latest_sensors"] = entry.get("sensors", {})
+            
+            # Create device cards
+            row = 0
+            for device_id, info in device_data.items():
+                self.create_device_card(device_id, info, row)
+                row += 1
+                
+        except tk.TclError:
+            pass
+    
+    def create_no_devices_message(self):
+        """Create no devices message"""
+        try:
             no_devices_frame = ctk.CTkFrame(self.devices_container)
             no_devices_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=20)
             no_devices_frame.grid_columnconfigure(0, weight=1)
+            self._widget_references.add(no_devices_frame)
             
             icon_label = ctk.CTkLabel(
                 no_devices_frame,
@@ -320,6 +375,7 @@ class DataDisplayFrame(ctk.CTkFrame):
                 font=ctk.CTkFont(size=48)
             )
             icon_label.grid(row=0, column=0, pady=(20, 10))
+            self._widget_references.add(icon_label)
             
             message_label = ctk.CTkLabel(
                 no_devices_frame,
@@ -327,135 +383,146 @@ class DataDisplayFrame(ctk.CTkFrame):
                 font=ctk.CTkFont(size=16, weight="bold")
             )
             message_label.grid(row=1, column=0, pady=(0, 20))
-            return
-        
-        # Group data by device
-        device_data = {}
-        for entry in self.data_history:
-            device_id = entry.get("device_id", "Unknown")
-            if device_id not in device_data:
-                device_data[device_id] = {
-                    "first_seen": entry["timestamp"],
-                    "last_seen": entry["timestamp"],
-                    "message_count": 0,
-                    "latest_sensors": {}
-                }
-            
-            device_data[device_id]["last_seen"] = entry["timestamp"]
-            device_data[device_id]["message_count"] += 1
-            device_data[device_id]["latest_sensors"] = entry.get("sensors", {})
-        
-        # Create device cards
-        row = 0
-        for device_id, info in device_data.items():
-            self.create_device_card(device_id, info, row)
-            row += 1
+            self._widget_references.add(message_label)
+        except tk.TclError:
+            pass
     
     def create_device_card(self, device_id: str, info: Dict[str, Any], row: int):
         """Create a card for each device"""
-        card_frame = ctk.CTkFrame(self.devices_container)
-        card_frame.grid(row=row, column=0, sticky="ew", padx=10, pady=5)
-        card_frame.grid_columnconfigure(1, weight=1)
-        
-        # Device icon and ID
-        icon_label = ctk.CTkLabel(
-            card_frame,
-            text="📱",
-            font=ctk.CTkFont(size=24)
-        )
-        icon_label.grid(row=0, column=0, rowspan=2, padx=15, pady=15)
-        
-        device_label = ctk.CTkLabel(
-            card_frame,
-            text=f"Device: {device_id}",
-            font=ctk.CTkFont(size=14, weight="bold")
-        )
-        device_label.grid(row=0, column=1, sticky="w", padx=10, pady=(15, 5))
-        
-        # Device info
-        first_seen = datetime.fromtimestamp(info["first_seen"]).strftime("%H:%M:%S")
-        last_seen = datetime.fromtimestamp(info["last_seen"]).strftime("%H:%M:%S")
-        
-        info_text = f"Messages: {info['message_count']} | First seen: {first_seen} | Last seen: {last_seen}"
-        info_label = ctk.CTkLabel(
-            card_frame,
-            text=info_text,
-            font=ctk.CTkFont(size=11),
-            text_color="gray"
-        )
-        info_label.grid(row=1, column=1, sticky="w", padx=10, pady=(0, 5))
-        
-        # Latest sensor values
-        sensors_frame = ctk.CTkFrame(card_frame)
-        sensors_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10))
-        sensors_frame.grid_columnconfigure((0, 1, 2), weight=1)
-        
-        sensors_title = ctk.CTkLabel(
-            sensors_frame,
-            text="Latest Sensor Values:",
-            font=ctk.CTkFont(size=12, weight="bold")
-        )
-        sensors_title.grid(row=0, column=0, columnspan=3, padx=10, pady=(10, 5))
-        
-        # Display sensor values in a grid
-        latest_sensors = info.get("latest_sensors", {})
-        sensor_labels = {
-            "ph": "pH",
-            "ec": "EC (µS/cm)",
-            "tds": "TDS (ppm)",
-            "sal": "Salinity (ppt)",
-            "do": "DO (mg/L)",
-            "sat": "Sat (%)"
-        }
-        
-        row_idx = 1
-        col_idx = 0
-        for sensor_key, label in sensor_labels.items():
-            if sensor_key in latest_sensors:
-                value = latest_sensors[sensor_key]
-                sensor_text = f"{label}: {value:.2f}"
+        try:
+            card_frame = ctk.CTkFrame(self.devices_container)
+            card_frame.grid(row=row, column=0, sticky="ew", padx=10, pady=5)
+            card_frame.grid_columnconfigure(1, weight=1)
+            self._widget_references.add(card_frame)
+            
+            # Device icon and ID
+            icon_label = ctk.CTkLabel(
+                card_frame,
+                text="📱",
+                font=ctk.CTkFont(size=24)
+            )
+            icon_label.grid(row=0, column=0, rowspan=2, padx=15, pady=15)
+            self._widget_references.add(icon_label)
+            
+            device_label = ctk.CTkLabel(
+                card_frame,
+                text=f"Device: {device_id}",
+                font=ctk.CTkFont(size=14, weight="bold")
+            )
+            device_label.grid(row=0, column=1, sticky="w", padx=10, pady=(15, 5))
+            self._widget_references.add(device_label)
+            
+            # Device info
+            first_seen = datetime.fromtimestamp(info["first_seen"]).strftime("%H:%M:%S")
+            last_seen = datetime.fromtimestamp(info["last_seen"]).strftime("%H:%M:%S")
+            
+            info_text = f"Messages: {info['message_count']} | First seen: {first_seen} | Last seen: {last_seen}"
+            info_label = ctk.CTkLabel(
+                card_frame,
+                text=info_text,
+                font=ctk.CTkFont(size=11),
+                text_color="gray"
+            )
+            info_label.grid(row=1, column=1, sticky="w", padx=10, pady=(0, 5))
+            self._widget_references.add(info_label)
+            
+            # Latest sensor values
+            sensors_frame = ctk.CTkFrame(card_frame)
+            sensors_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10))
+            sensors_frame.grid_columnconfigure((0, 1, 2), weight=1)
+            self._widget_references.add(sensors_frame)
+            
+            self.create_sensor_values_display(sensors_frame, info.get("latest_sensors", {}))
+            
+        except tk.TclError:
+            pass
+    
+    def create_sensor_values_display(self, parent_frame, latest_sensors: Dict[str, Any]):
+        """Create sensor values display"""
+        try:
+            sensors_title = ctk.CTkLabel(
+                parent_frame,
+                text="Latest Sensor Values:",
+                font=ctk.CTkFont(size=12, weight="bold")
+            )
+            sensors_title.grid(row=0, column=0, columnspan=3, padx=10, pady=(10, 5))
+            self._widget_references.add(sensors_title)
+            
+            # Display sensor values in a grid
+            sensor_labels = {
+                "ph": "pH",
+                "ec": "EC (µS/cm)",
+                "tds": "TDS (ppm)",
+                "sal": "Salinity (ppt)",
+                "do": "DO (mg/L)",
+                "sat": "Sat (%)"
+            }
+            
+            row_idx = 1
+            col_idx = 0
+            for sensor_key, label in sensor_labels.items():
+                if sensor_key in latest_sensors:
+                    value = latest_sensors[sensor_key]
+                    sensor_text = f"{label}: {value:.2f}"
+                    
+                    sensor_label = ctk.CTkLabel(
+                        parent_frame,
+                        text=sensor_text,
+                        font=ctk.CTkFont(size=11)
+                    )
+                    sensor_label.grid(row=row_idx, column=col_idx, padx=5, pady=2, sticky="w")
+                    self._widget_references.add(sensor_label)
+                    
+                    col_idx += 1
+                    if col_idx >= 3:
+                        col_idx = 0
+                        row_idx += 1
+            
+            # Add some padding at the bottom
+            if row_idx > 1 or col_idx > 0:
+                parent_frame.grid_rowconfigure(row_idx, minsize=10)
                 
-                sensor_label = ctk.CTkLabel(
-                    sensors_frame,
-                    text=sensor_text,
-                    font=ctk.CTkFont(size=11)
-                )
-                sensor_label.grid(row=row_idx, column=col_idx, padx=5, pady=2, sticky="w")
-                
-                col_idx += 1
-                if col_idx >= 3:
-                    col_idx = 0
-                    row_idx += 1
-        
-        # Add some padding at the bottom
-        if row_idx > 1 or col_idx > 0:
-            sensors_frame.grid_rowconfigure(row_idx, minsize=10)
+        except tk.TclError:
+            pass
     
     def clear_data(self):
         """Clear all displayed data"""
-        self.raw_text.delete("1.0", "end")
-        
-        # Clear tree view
-        for item in self.data_tree.get_children():
-            self.data_tree.delete(item)
-        
-        # Clear history
-        self.data_history.clear()
-        
-        # Clear and close matplotlib figures
-        if self.canvas:
-            self.canvas.get_tk_widget().destroy()
-            self.canvas = None
-        
-        plt.close('all')  # Close all matplotlib figures
-        
-        if self.stats_info_frame:
-            self.stats_info_frame.destroy()
-            self.stats_info_frame = None
-        
-        # Update displays
-        self.update_statistics()
-        self.update_devices_display()
+        with self._update_lock:
+            try:
+                self.raw_text.delete("1.0", "end")
+                
+                # Clear tree view
+                for item in self.data_tree.get_children():
+                    self.data_tree.delete(item)
+                
+                # Clear history
+                self.data_history.clear()
+                
+                # Clear and close matplotlib figures
+                if self.canvas:
+                    try:
+                        self.canvas.get_tk_widget().destroy()
+                    except tk.TclError:
+                        pass
+                    self.canvas = None
+                
+                plt.close('all')  # Close all matplotlib figures
+                
+                # Clear widget references
+                for widget in self._widget_references.copy():
+                    self.safe_widget_destroy(widget)
+                self._widget_references.clear()
+                
+                if self.stats_info_frame:
+                    self.safe_widget_destroy(self.stats_info_frame)
+                    self.stats_info_frame = None
+                
+                # Update displays
+                self.after(100, self.update_statistics)
+                self.after(100, self.update_devices_display)
+                
+            except tk.TclError:
+                pass
     
     def export_data(self):
         """Export data to file"""
@@ -480,114 +547,137 @@ class DataDisplayFrame(ctk.CTkFrame):
     
     def on_graph_type_change(self, value):
         """Handle graph type change"""
-        self.update_statistics()
+        self.after(100, self.update_statistics)
     
     def update_statistics(self):
         """Update statistics display"""
-        if not self.data_history:
-            self.show_no_data_message()
-            return
+        try:
+            if not self.data_history:
+                self.show_no_data_message()
+                return
 
-        stats = self.calculate_statistics()
-        
-        # Clear existing content
-        for widget in self.stats_scroll.winfo_children():
-            widget.destroy()
-        
-        # Create info cards
-        self.create_info_cards(stats)
-        
-        # Create graphs based on selected type
-        graph_type = self.graph_type_var.get()
-        if graph_type == "overview":
-            self.create_overview_graphs(stats)
-        elif graph_type == "trends":
-            self.create_trend_graphs(stats)
-        elif graph_type == "comparison":
-            self.create_comparison_graphs(stats)
+            stats = self.calculate_statistics()
+            
+            # Clear existing content safely
+            for widget in self.stats_scroll.winfo_children():
+                self.safe_widget_destroy(widget)
+            
+            # Create info cards
+            self.create_info_cards(stats)
+            
+            # Create graphs based on selected type
+            graph_type = self.graph_type_var.get()
+            if graph_type == "overview":
+                self.create_overview_graphs(stats)
+            elif graph_type == "trends":
+                self.create_trend_graphs(stats)
+            elif graph_type == "comparison":
+                self.create_comparison_graphs(stats)
+                
+        except tk.TclError:
+            pass
     
     def show_no_data_message(self):
         """Show message when no data is available"""
-        # Clear existing content
-        for widget in self.stats_scroll.winfo_children():
-            widget.destroy()
-        
-        no_data_frame = ctk.CTkFrame(self.stats_scroll)
-        no_data_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=20)
-        no_data_frame.grid_columnconfigure(0, weight=1)
-        
-        icon_label = ctk.CTkLabel(
-            no_data_frame,
-            text="📊",
-            font=ctk.CTkFont(size=48)
-        )
-        icon_label.grid(row=0, column=0, pady=(20, 10))
-        
-        message_label = ctk.CTkLabel(
-            no_data_frame,
-            text="No data available for statistics",
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        message_label.grid(row=1, column=0, pady=(0, 20))
+        try:
+            # Clear existing content
+            for widget in self.stats_scroll.winfo_children():
+                self.safe_widget_destroy(widget)
+            
+            no_data_frame = ctk.CTkFrame(self.stats_scroll)
+            no_data_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=20)
+            no_data_frame.grid_columnconfigure(0, weight=1)
+            self._widget_references.add(no_data_frame)
+            
+            icon_label = ctk.CTkLabel(
+                no_data_frame,
+                text="📊",
+                font=ctk.CTkFont(size=48)
+            )
+            icon_label.grid(row=0, column=0, pady=(20, 10))
+            self._widget_references.add(icon_label)
+            
+            message_label = ctk.CTkLabel(
+                no_data_frame,
+                text="No data available for statistics",
+                font=ctk.CTkFont(size=16, weight="bold")
+            )
+            message_label.grid(row=1, column=0, pady=(0, 20))
+            self._widget_references.add(message_label)
+            
+        except tk.TclError:
+            pass
     
     def create_info_cards(self, stats: Dict[str, Any]):
         """Create information cards with statistics"""
-        info_frame = ctk.CTkFrame(self.stats_scroll)
-        info_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        info_frame.grid_columnconfigure((0, 1, 2), weight=1)
-        
-        # Total messages card
-        total_card = self.create_stat_card(
-            info_frame,
-            "📈 Total Messages",
-            str(stats['total_messages']),
-            "#4CAF50"
-        )
-        total_card.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-        
-        # Active devices card
-        devices_count = len(stats['devices'])
-        devices_card = self.create_stat_card(
-            info_frame,
-            "📱 Active Devices",
-            str(devices_count),
-            "#2196F3"
-        )
-        devices_card.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        
-        # Latest reading card
-        if self.data_history:
-            latest_time = datetime.fromtimestamp(self.data_history[-1]['timestamp'])
-            time_str = latest_time.strftime("%H:%M:%S")
-            latest_card = self.create_stat_card(
+        try:
+            info_frame = ctk.CTkFrame(self.stats_scroll)
+            info_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+            info_frame.grid_columnconfigure((0, 1, 2), weight=1)
+            self._widget_references.add(info_frame)
+            
+            # Total messages card
+            total_card = self.create_stat_card(
                 info_frame,
-                "🕐 Latest Reading",
-                time_str,
-                "#FF9800"
+                "📈 Total Messages",
+                str(stats['total_messages']),
+                "#4CAF50"
             )
-            latest_card.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+            total_card.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+            
+            # Active devices card
+            devices_count = len(stats['devices'])
+            devices_card = self.create_stat_card(
+                info_frame,
+                "📱 Active Devices",
+                str(devices_count),
+                "#2196F3"
+            )
+            devices_card.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+            
+            # Latest reading card
+            if self.data_history:
+                latest_time = datetime.fromtimestamp(self.data_history[-1]['timestamp'])
+                time_str = latest_time.strftime("%H:%M:%S")
+                latest_card = self.create_stat_card(
+                    info_frame,
+                    "🕐 Latest Reading",
+                    time_str,
+                    "#FF9800"
+                )
+                latest_card.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+                
+        except tk.TclError:
+            pass
     
     def create_stat_card(self, parent, title: str, value: str, color: str):
         """Create a statistics card"""
-        card = ctk.CTkFrame(parent)
-        card.grid_columnconfigure(0, weight=1)
-        
-        title_label = ctk.CTkLabel(
-            card,
-            text=title,
-            font=ctk.CTkFont(size=12, weight="bold")
-        )
-        title_label.grid(row=0, column=0, padx=10, pady=(10, 5))
-        
-        value_label = ctk.CTkLabel(
-            card,
-            text=value,
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color=color
-        )
-        value_label.grid(row=1, column=0, padx=10, pady=(0, 10))
-        
-        return card
+        try:
+            card = ctk.CTkFrame(parent)
+            card.grid_columnconfigure(0, weight=1)
+            self._widget_references.add(card)
+            
+            title_label = ctk.CTkLabel(
+                card,
+                text=title,
+                font=ctk.CTkFont(size=12, weight="bold")
+            )
+            title_label.grid(row=0, column=0, padx=10, pady=(10, 5))
+            self._widget_references.add(title_label)
+            
+            value_label = ctk.CTkLabel(
+                card,
+                text=value,
+                font=ctk.CTkFont(size=24, weight="bold"),
+                text_color=color
+            )
+            value_label.grid(row=1, column=0, padx=10, pady=(0, 10))
+            self._widget_references.add(value_label)
+            
+            return card
+            
+        except tk.TclError:
+            return None
     
     def create_overview_graphs(self, stats: Dict[str, Any]):
         """Create overview graphs with modern styling"""
@@ -795,31 +885,41 @@ class DataDisplayFrame(ctk.CTkFrame):
     
     def show_insufficient_data_message(self, message: str):
         """Show message when insufficient data for analysis"""
-        info_frame = ctk.CTkFrame(self.stats_scroll)
-        info_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=20)
-        info_frame.grid_columnconfigure(0, weight=1)
-        
-        icon_label = ctk.CTkLabel(
-            info_frame,
-            text="⚠️",
-            font=ctk.CTkFont(size=48)
-        )
-        icon_label.grid(row=0, column=0, pady=(20, 10))
-        
-        message_label = ctk.CTkLabel(
-            info_frame,
-            text=message,
-            font=ctk.CTkFont(size=14),
-            wraplength=400
-        )
-        message_label.grid(row=1, column=0, pady=(0, 20))
+        try:
+            info_frame = ctk.CTkFrame(self.stats_scroll)
+            info_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=20)
+            info_frame.grid_columnconfigure(0, weight=1)
+            self._widget_references.add(info_frame)
+            
+            icon_label = ctk.CTkLabel(
+                info_frame,
+                text="⚠️",
+                font=ctk.CTkFont(size=48)
+            )
+            icon_label.grid(row=0, column=0, pady=(20, 10))
+            self._widget_references.add(icon_label)
+            
+            message_label = ctk.CTkLabel(
+                info_frame,
+                text=message,
+                font=ctk.CTkFont(size=14),
+                wraplength=400
+            )
+            message_label.grid(row=1, column=0, pady=(0, 20))
+            self._widget_references.add(message_label)
+            
+        except tk.TclError:
+            pass
     
     def embed_matplotlib_figure(self, fig, row: int):
         """Embed matplotlib figure in tkinter"""
         try:
             # Clear existing canvas
             if self.canvas:
-                self.canvas.get_tk_widget().destroy()
+                try:
+                    self.canvas.get_tk_widget().destroy()
+                except tk.TclError:
+                    pass
                 self.canvas = None
             
             # Create new canvas
@@ -827,6 +927,7 @@ class DataDisplayFrame(ctk.CTkFrame):
             canvas_frame.grid(row=row, column=0, sticky="nsew", padx=10, pady=10)
             canvas_frame.grid_columnconfigure(0, weight=1)
             canvas_frame.grid_rowconfigure(0, weight=1)
+            self._widget_references.add(canvas_frame)
             
             self.canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
             self.canvas.draw()
@@ -841,24 +942,31 @@ class DataDisplayFrame(ctk.CTkFrame):
     
     def show_graph_error(self, message: str):
         """Show error message when graph creation fails"""
-        error_frame = ctk.CTkFrame(self.stats_scroll)
-        error_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=20)
-        error_frame.grid_columnconfigure(0, weight=1)
-        
-        icon_label = ctk.CTkLabel(
-            error_frame,
-            text="⚠️",
-            font=ctk.CTkFont(size=48)
-        )
-        icon_label.grid(row=0, column=0, pady=(20, 10))
-        
-        message_label = ctk.CTkLabel(
-            error_frame,
-            text=message,
-            font=ctk.CTkFont(size=14),
-            wraplength=400
-        )
-        message_label.grid(row=1, column=0, pady=(0, 20))
+        try:
+            error_frame = ctk.CTkFrame(self.stats_scroll)
+            error_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=20)
+            error_frame.grid_columnconfigure(0, weight=1)
+            self._widget_references.add(error_frame)
+            
+            icon_label = ctk.CTkLabel(
+                error_frame,
+                text="⚠️",
+                font=ctk.CTkFont(size=48)
+            )
+            icon_label.grid(row=0, column=0, pady=(20, 10))
+            self._widget_references.add(icon_label)
+            
+            message_label = ctk.CTkLabel(
+                error_frame,
+                text=message,
+                font=ctk.CTkFont(size=14),
+                wraplength=400
+            )
+            message_label.grid(row=1, column=0, pady=(0, 20))
+            self._widget_references.add(message_label)
+            
+        except tk.TclError:
+            pass
     
     def calculate_statistics(self) -> Dict[str, Any]:
         """Calculate statistics from data history"""
@@ -917,3 +1025,28 @@ class DataDisplayFrame(ctk.CTkFrame):
             "avg": sum(values) / len(values),
             "count": len(values)
         }
+    
+    def destroy(self):
+        """Override destroy to cleanup properly"""
+        try:
+            # Close all matplotlib figures
+            plt.close('all')
+            
+            # Clear widget references
+            for widget in self._widget_references.copy():
+                self.safe_widget_destroy(widget)
+            self._widget_references.clear()
+            
+            # Clear canvas
+            if self.canvas:
+                try:
+                    self.canvas.get_tk_widget().destroy()
+                except tk.TclError:
+                    pass
+                self.canvas = None
+            
+            # Call parent destroy
+            super().destroy()
+            
+        except tk.TclError:
+            pass
