@@ -88,6 +88,31 @@ The application expects JSON-formatted sensor data:
 }
 \`\`\`
 
+## Diagrams
+
+### System overview
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/overview-dark.png">
+  <img src="docs/diagrams/overview.png" alt="Raspberry Pi sensor node: mock sensors feed main.py, which AES-256-CBC encrypts the JSON and sends it through the SX126x HAT over /dev/ttyS0. Failed sends go to unsent_data.log for retry; keyfile.bin holds the key and config.ini sets the radio. The packet crosses LoRa 868 MHz to an SX126x USB gateway (CP210x) on a Windows PC, the desktop app decrypts it with the same keyfile.bin and shows it to the operator, who can export JSON." width="100%">
+</picture>
+
+### Sensor node (`device/`)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/device-dark.png">
+  <img src="docs/diagrams/device.png" alt="device/: mock sensors produce JSON; main.py passes the payload to EncryptionManager, then the [EN]-prefixed base64 goes to the sx126x.py driver, which talks UART to the E22-900T22S HAT and out over LoRa. main.py writes failed sends to unsent_data.log and retries them; keyfile.bin feeds the encryption key and config.ini feeds the radio params." width="100%">
+</picture>
+
+### Gateway desktop app (`desktop/`)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/desktop-dark.png">
+  <img src="docs/diagrams/desktop.png" alt="desktop/: SX126x USB gateway on a COM port is read line by line by SerialManager; MainWindow strips the [EN] tag, EncryptionManager decrypts with keyfile.bin, and DataDisplayFrame shows tabs and stats with matplotlib graphs to the operator, who can export JSON. Control widgets connect the serial port and save/load config.json; MockDataGenerator feeds mock data in dev mode." width="100%">
+</picture>
+
+<sub>Diagrams made with [stack-diagram](https://github.com/caru-ini/stack-diagram). Icons: devicon / svgl / Lucide.</sub>
+
 ## Architecture
 
 \`\`\`
